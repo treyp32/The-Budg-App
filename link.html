@@ -1,0 +1,16 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Link accounts</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:system-ui;padding:20px;max-width:480px;margin:auto"><h2>Link an account</h2><div id="a"></div><p id="s"></p>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<script>
+let C={};try{C=JSON.parse(localStorage.getItem('cfg')||'{}')}catch(e){}
+const A=document.getElementById('a'),S=document.getElementById('s');
+function ui(){if(C.u){A.innerHTML='<button id="go" style="font-size:18px;padding:12px 20px">Link a bank or card</button>';document.getElementById('go').onclick=start}
+else{A.innerHTML='<input id="u" placeholder="Web app URL" style="width:100%;padding:8px"><br><br><input id="k" type="password" placeholder="Password" style="width:100%;padding:8px"><br><br><button id="sv">Save</button>';
+document.getElementById('sv').onclick=()=>{C={u:document.getElementById('u').value.trim(),k:document.getElementById('k').value};localStorage.setItem('cfg',JSON.stringify(C));ui()}}}
+function openLink(tok,recv){Plaid.create({token:tok,receivedRedirectUri:recv||undefined,onSuccess:async(pt,meta)=>{S.textContent='Saving...';
+const r=await fetch(C.u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({token:C.k,action:'exchange',public_token:pt,name:meta.institution&&meta.institution.name})}).then(x=>x.json());
+S.textContent=r.ok?'Linked '+(r.name||'')+'. You can link another.':'Error: '+(r.err||'unknown')},onExit:e=>{if(e)S.textContent='Closed: '+(e.display_message||e.error_message||'')}}).open()}
+async function start(){S.textContent='';const r=await fetch(C.u+'?action=linktoken&token='+encodeURIComponent(C.k)).then(x=>x.json());
+if(!r.link_token){S.textContent='Error: '+JSON.stringify(r);return}localStorage.setItem('lt',r.link_token);openLink(r.link_token)}
+ui();if(location.search.includes('oauth_state_id'))openLink(localStorage.getItem('lt'),location.href);
+</script></body></html>
