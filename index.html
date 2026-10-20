@@ -47,7 +47,7 @@ function mergeInbox(rows){rows.forEach(r=>{
 async function refresh(){if(!await push())return;setSync('Refreshing bank transactions…','busy');try{const r=await(await fetch(CFG.u+'?action=sync&token='+encodeURIComponent(CFG.k))).json();if(r.err)throw Error(r.err);await boot(true)}catch(e){setSync('Not synced · retry','bad')}}
 function init(){
  Object.assign(st,{q:st.q||'',fa:st.fa||'all',fc:st.fc||'all',sel:st.sel||0,ss:st.ss||[],sp:st.sp??null,sug:st.sug||null});
- S.a=S.a||{};S.b=S.b||{};S.t=S.t||[];S.rl=S.rl||[];S.lv=S.lv||{};S.g=S.g||{hg:125000,ct:'',ca:0,cs:0};S.amap=S.amap||{};
+ S.a=S.a||{};S.b=S.b||{};S.t=S.t||[];S.rl=S.rl||[];S.lv=S.lv||{};S.g=S.g||{hg:125000,ct:'',ca:0,cs:0};S.amap=S.amap||{};S.rowmap=S.rowmap||{};
  MS=Object.keys(D.a||{});mergeInbox(IB);const c=mk(new Date());if(!st.m||!MS.includes(st.m))st.m=MS.includes(c)?c:MS[0];go()
 }
 function setup(msg){m.innerHTML=`<h1>Connect</h1><div class=card><div class=mu>${msg||'Paste your Apps Script web app URL and your secret password. Stored only on this phone.'}</div><div class=row><input id=cu placeholder="Web app URL" style="width:100%"></div><div class=row><input id=ck type=password placeholder="Secret password" style="width:100%"></div><button class=b onclick="CFG={u:cu.value.trim(),k:ck.value};localStorage.setItem('cfg',JSON.stringify(CFG));boot()">Connect</button></div>`;n.innerHTML=''}
@@ -74,7 +74,7 @@ async function boot(background=false){
 async function push(){
  if(!CFG.u){setSync('Saved on this device','bad');return false}
  setSync('Syncing…','busy');
- try{const r=await(await fetch(CFG.u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({token:CFG.k,state:S})})).json();if(r.err)throw Error(r.err);setSync('Synced','ok');return true}
+ try{const r=await(await fetch(CFG.u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({token:CFG.k,state:S})})).json();if(r.err)throw Error(r.err);setSync(r.mapping?.warnings?.length?'Synced · check balance mapping':'Synced','ok');return true}
  catch(e){setSync('Not synced · retry','bad');return false}
 }
 function setSync(s,k='ok'){SYNC_TEXT=s;SYNC_KIND=k;syncUi()}
@@ -82,7 +82,7 @@ function syncUi(){const e=document.getElementById('sync-status');if(e){e.classNa
 const save=()=>{S.u=new Date().toLocaleString();try{localStorage.setItem('dc',JSON.stringify({D,S}))}catch(e){}setSync('Saved locally · syncing…','busy');clearTimeout(tmr);tmr=setTimeout(push,1200)};
 const mk=d=>{const x=typeof d=='string'&&/^\d{4}-\d\d-\d\d/.test(d)?new Date(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10)):new Date(d);return isNaN(x)?st.m:x.toLocaleString('en',{month:'short'})+'-'+String(x.getFullYear()).slice(2)};
 const ci=nm=>D.c.findIndex(c=>c[0].toLowerCase().includes(nm.toLowerCase()));
-const tx=(m,i)=>S.t.filter(t=>t.m==m&&t.c==i&&!t.tr&&!t.cl&&!t.ig).reduce((s,t)=>s+t.a,0);
+const tx=(m,i)=>S.t.filter(t=>t.m==m&&t.c==i&&!t.cl&&!t.ig&&!t.pending&&(!t.tr||(t.dest&&t.countTransfer&&D.c[i]?.[1]==='s'))).reduce((s,t)=>s+t.a,0);
 const A=m=>S.lv[m]?D.c.map((_,i)=>tx(m,i)):(S.a[m]||D.a[m]||D.c.map(_=>0)),B=m=>S.b[m]||D.b[m]||D.c.map(_=>0);
 const $=v=>(v<0?'-$':'$')+Math.abs(Math.round(v)).toLocaleString(),pc=v=>Math.round(v*100)+'%',vr=(a,b)=>b?(a-b)/b:0;
 function T(a){const r={i:0,f:0,a:0,d:0,s:0};D.c.forEach((c,i)=>r[c[1]]+=a[i]);r.ess=r.f+r.a;r.exp=r.ess+r.d;r.net=r.i-r.exp;r.cash=r.net-r.s;return r}
@@ -120,11 +120,14 @@ function mro(n,a){const k=n.toLowerCase();return S.rl.find(r=>k.includes(r.k)&&(
 function mr(n,a){const r=mro(n,a);return r?r.c:-1}
 const isTr=n=>/payment|transfer|autopay|thank you|to savings|from savings|zelle to/i.test(n);
 function cat(d,ap,a){const r=mr(d,a);if(r>=0)return r;const M={restaurants:'Food',groceries:'Grocer',shopping:'Fun',gas:'Gas',entertainment:'Fun',transportation:'Auto',health:'Medical',travel:'Travel',services:'Personal',other:'Misc',food:'Food'};return ci(M[(ap||'').toLowerCase()]||'zzz')}
-const opts=(sel)=>D.c.map((c,i)=>'fad'.includes(c[1])||c[1]=='i'?`<option value=${i} ${i==sel?'selected':''}>${c[0]}</option>`:'').join('')
+const opts=(sel)=>D.c.map((c,i)=>'fadis'.includes(c[1])?`<option value=${i} ${i==sel?'selected':''}>${c[0]}</option>`:'').join('')
+const transferRows=[['','Unassigned'],[61,'401(k)'],[62,'SoFi investments'],[66,'SoFi checking'],[67,'Available savings'],[68,'Emergency savings'],[69,'Baby fund'],[70,'House fund'],[71,'CPA fund'],[72,'Other accounts']];
+function setTransferDestination(j,v){const t=S.t[j];t.dest=v?+v:null;t.tr=1;if(!v)t.countTransfer=false;save();go()}
 function tcard(t){
  const j=S.t.indexOf(t),cl=t.ig?'muted-card':'';
  return `<div class="card ${cl}" style="${t.pending?'opacity:.58':''}"><div class=top style="align-items:flex-start"><div style="min-width:0">${st.sel?`<input type=checkbox ${st.ss.includes(j)?'checked':''} onchange="tg(${j})" style="float:left;margin:2px 8px 0 0">`:''}<div class=mu>${dfmt(t.d)}${t.ac?' · '+acf(t.ac):''}</div><div style="font-weight:600">${tidy(t.n)}</div>${t.tr?'<span class=chip>Transfer</span>':''}${t.pending?'<span class=chip>Pending</span>':''}${t.ig?'<span class=chip>Ignored</span>':''}</div><b style="font-size:18px">${$2(t.a)}</b></div>
  <select style="margin-top:10px;width:100%" onchange="rc(${j},this.value)"><option value=-1 ${t.tr?'selected':''}>Transfer (not spending)</option>${opts(t.c)}</select>
+ ${t.tr?`<div class=setting-label>Transfer destination (optional)</div><select style="width:100%" onchange="setTransferDestination(${j},this.value)">${transferRows.map(([r,n])=>`<option value="${r}" ${String(t.dest||'')===String(r)?'selected':''}>${escHtml(n)}</option>`).join('')}</select>${t.dest?`<div class=row><span class=mu>Count toward savings / investment budget</span><input type=checkbox ${t.countTransfer?'checked':''} onchange="S.t[${j}].countTransfer=this.checked;save();go()"></div><select style="width:100%;margin-top:6px" onchange="S.t[${j}].c=+this.value;save();go()"><option value=-1 ${D.c[t.c]?.[1]!=='s'?'selected':''}>Choose savings budget category</option>${D.c.map((c,i)=>c[1]==='s'?`<option value=${i} ${t.c===i?'selected':''}>${escHtml(c[0])}</option>`:'').join('')}</select><div class=mu>Count only the outgoing side. Savings categories contribute to monthly totals; account balances come separately from Plaid.</div>`:''}`:''}
  <input class=note-input placeholder="Add a note (optional)" value="${escAttr(t.note||'')}" onchange="S.t[${j}].note=this.value;save()" aria-label="Transaction note">
  <div class=g3><button class=p onclick="S.t[${j}].rv=0;save();go()">${t.rv?'Review OK':'Reviewed'}</button><button onclick="st.sp=${j};st.spl=[{c:${t.c},a:${t.a}}];go()">Split</button><button onclick="S.t[${j}].ig=!S.t[${j}].ig;save();go()">${t.ig?'Unignore':'Ignore'}</button></div>
  <div class=g3><button onclick="dl(${j})">Delete</button><span></span><span></span></div></div>`;
@@ -154,7 +157,7 @@ function ap(){let k=0;S.t.forEach(t=>{if(t.cl||t.sp)return;const c=mr(t.n,t.a);i
 function quickMerchant(n){const e=document.getElementById('tm');if(e)e.value=n}
 function quickCat(i){const e=document.getElementById('tc');if(e)e.value=String(i)}
 function addT(){const a=Math.abs(parseFloat(document.getElementById('ta')?.value||''));if(!a)return alert('Enter an amount first.');const date=document.getElementById('td')?.value||dk(new Date()),merchant=(document.getElementById('tm')?.value||'').trim()||'Manual';const cat=+(document.getElementById('tc')?.value??ci('Misc'));S.t.push({d:date,m:mk(date),n:merchant,a,c:cat,rv:0,tr:0,pending:false,note:'',ig:false});save();go()}
-function rc(j,v){const t=S.t[j];v=+v;if(v<0)t.tr=1;else{t.tr=0;t.c=v;const k=tidy(t.n).toLowerCase();S.fx=S.fx||{};const f=S.fx[k];S.fx[k]=f&&f.c==v?{c:v,n:f.n+1}:{c:v,n:1};if(S.fx[k].n>=2&&mr(t.n,t.a)!=v)st.sug={k,c:v}}t.rv=0;save();go()}
+function rc(j,v){const t=S.t[j];v=+v;if(v<0)t.tr=1;else{t.tr=0;t.dest=null;t.countTransfer=false;t.c=v;const k=tidy(t.n).toLowerCase();S.fx=S.fx||{};const f=S.fx[k];S.fx[k]=f&&f.c==v?{c:v,n:f.n+1}:{c:v,n:1};if(S.fx[k].n>=2&&mr(t.n,t.a)!=v)st.sug={k,c:v}}t.rv=0;save();go()}
 function dl(j){S.t.splice(j,1);save();go()}
 function sp(){}
 function csv(s){const R=[];let r=[],f='',q=0;for(const ch of s+'\n'){if(ch=='"')q=!q;else if(ch==','&&!q){r.push(f);f=''}else if(ch=='\n'&&!q){r.push(f);R.push(r);r=[];f=''}else if(ch!='\r')f+=ch}return R}
@@ -237,13 +240,15 @@ function downloadBackup(){
  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download='the-budg-backup-'+dk(new Date())+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+const balanceRowOpts=[[61,'401(k)'],[62,'SoFi investments'],[66,'SoFi checking'],[67,'Available savings'],[68,'Emergency savings'],[69,'Baby fund'],[70,'House fund'],[71,'CPA fund'],[72,'Other accounts'],[82,'Debt to Kelly'],[83,'Debt to Laine'],[84,'Student loan'],[85,'Credit card']];
+function setRowMapping(id,row){const key=decodeURIComponent(id);if(row)S.rowmap[key]=Number(row);else delete S.rowmap[key];save();go()}
 function settings(){
  const accounts=[...new Set(S.t.map(t=>t.ac).filter(Boolean))],errors=(IB||[]).filter(x=>x.t==='error');
  const themes=[['auto','Auto'],['light','Light'],['dark','Dark']];
  const mapOpts=['Not mapped','Cash','Investments','Credit card liability','Other liability'];
  return `<div class=card><div class=top><b>Sync status</b><span id=sync-status class="sync-pill ${SYNC_KIND}">${escHtml(SYNC_TEXT)}</span></div><div class=mu style="margin-top:6px">Changes save locally first, then sync to your Google Sheet.</div><div class=two-col style="margin-top:10px"><button class=p onclick="push()">Retry sync</button><button onclick="refresh()">Refresh banks</button></div>${errors.length?`<div class=warn r><b>Reconnect needed</b>${errors.map(e=>`<div>${escHtml(e.n||'Bank connection')}: ${escHtml(e.id||'Plaid reported an error')}</div>`).join('')}Open your existing bank-link page and reconnect the affected institution.</div>`:'<div class=mu style="margin-top:8px">No reconnect error is currently recorded in the transaction inbox. This is not a live guarantee that every bank session is valid.</div>'}</div>
  <div class=card><b>Appearance</b><div class=seg>${themes.map(([v,l])=>`<button class="${THEME===v?'on':''}" onclick="setTheme('${v}')">${l}${THEME===v?' ✓':''}</button>`).join('')}</div><div class=mu>Dark mode uses the slate-blue accent; light mode keeps the original green accent.</div></div>
- <div class=card><b>Linked accounts seen in transactions</b>${accounts.length?accounts.map(a=>`<div class=row><span>${escHtml(acf(a))}<br><span class=mu>Most recent account label saved with a transaction</span></span><select style="max-width:150px" onchange="S.amap[decodeURIComponent('${encodeURIComponent(a)}')]=this.value;save()">${mapOpts.map(o=>`<option value="${escAttr(o)}" ${(S.amap[a]||'Not mapped')===o?'selected':''}>${o}</option>`).join('')}</select></div>`).join(''):'<div class=mu style="margin-top:8px">No linked-account labels found yet.</div>'}<div class=mu style="margin-top:8px">Account mappings are reference labels only. Balance-sheet totals continue to come from Main Page so linked accounts are not double-counted.</div></div>
+ <div class=card><b>Linked account → Main Page row</b><div class=mu style="margin-top:6px">Select the specific balance-sheet row. Balances are pulled from Plaid on bank refresh and written to the current month only. Historical months and formulas are protected. Two accounts mapped to one row are summed.</div>${(D.accounts||[]).length?(D.accounts||[]).map(a=>`<div class=row><span style="min-width:0;flex:1">${escHtml(a.institution+' · '+a.name+(a.mask?' ••'+a.mask:''))}<br><span class=mu>${a.balance==null?'Balance unavailable':$(a.balance)} · ${a.status==='ok'?'checked '+escHtml(a.updated.slice(0,10)):'Needs refresh'}</span></span><select style="max-width:155px" onchange="setRowMapping('${encodeURIComponent(a.id)}',this.value)"><option value="">Not mapped</option>${balanceRowOpts.map(([r,n])=>`<option value="${r}" ${Number(S.rowmap[a.id])===r?'selected':''}>${r} · ${escHtml(n)}</option>`).join('')}</select></div>`).join(''):'<div class=mu style="margin-top:8px">No individual account balances discovered yet. Tap Refresh banks above (linked institutions need to support Plaid accounts).</div>'}<div class=mu style="margin-top:8px">Important: mappings only update cells that are NOT formulas. If the target cell has a formula, leave it in place or deliberately replace it yourself after reviewing its role.</div></div>
  <div class=card><b>Transaction rules</b><div class=row><span>${S.rl.length} rules saved</span><button onclick="st.t='Transactions';st.v='rules';go()">Manage rules</button></div><div class=mu>Trusted rules can auto-confirm matching imported transactions.</div></div>
  <div class=card><b>Backup</b><div class=mu>Export a JSON file containing the app state and the spreadsheet data currently loaded on this device. Store it somewhere private.</div><button class=p style="width:100%;margin-top:10px" onclick="downloadBackup()">Export backup file</button></div>
  <div class=card><b>Privacy & data</b><div class=mu>The app stores a local cache on this device and saves app state to the spreadsheet's AppData tab. The backup contains financial information; protect it like your spreadsheet.</div></div>`;
