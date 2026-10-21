@@ -51,48 +51,104 @@ nav{justify-content:center;padding:7px 6px max(9px,env(safe-area-inset-bottom));
 .trend-kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.trend-kpis>div{min-width:0}.trend-kpis .analysis-desc{overflow-wrap:anywhere}
 .networth-months .row{gap:5px}.networth-months .diff{font-weight:800;font-size:12px}.networth-months .future{font-size:10px;color:var(--mu);margin-left:3px}
 @media(max-width:480px){.month-nav{gap:3px}.month-nav .smallbtn{padding:0 6px;font-size:11px}.month-nav .month-now{padding:0 6px}.month-trigger{min-width:78px;padding:2px 5px}.tiles>.card{height:126px}.tiles .metric{font-size:22px}.net-income-tile .metric{font-size:26px}.net-estimate{gap:3px}.net-estimate span{font-size:9px}.net-estimate b{font-size:12px}}
+
+/* v9 accounting-accurate views */
+.range-knob-v8{width:18px!important;height:18px!important;top:25px!important;border-width:2px!important;box-shadow:0 1px 3px #0002!important}
+.net-income-tile .metric{font-size:clamp(27px,3.6vw,41px)!important;line-height:1.06;letter-spacing:-.045em}
+@media(max-width:480px){.net-income-tile .metric{font-size:clamp(26px,6.4vw,34px)!important}}
+.account-group>summary{border-radius:9px;padding:12px 9px}
+.account-group.kind-cash-savings>summary{background:rgba(54,157,99,.12)}
+.account-group.kind-investments>summary{background:rgba(76,129,205,.13)}
+.account-group.kind-credit-cards>summary{background:rgba(221,90,86,.12)}
+.account-group.kind-debt>summary{background:rgba(220,158,68,.13)}
+.account-group.kind-other-assets>summary{background:var(--fld)}
+.txn-account{border:1px solid var(--ln);border-radius:12px;margin:9px 0;padding:8px;background:var(--card)}
+.txn-account>summary{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;font-weight:700}
+.txn-account>.card{margin-top:7px}.txn-sort{justify-content:space-between;margin:7px 3px 12px}.txn-sort .seg{max-width:270px}
+.checkline{display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid var(--ln);padding:11px 1px}
+.checkline .checkstatus{font-size:12px;font-weight:800;min-width:64px}
+.checkline .checkstatus.ok{color:var(--grn)}.checkline .checkstatus.attention{color:var(--red)}
+.close-preview{background:var(--fld);padding:12px;border-radius:12px;margin:10px 0}
 </style></head><body><main id="m"></main><nav id="n"></nav><div id="panelHost"></div>
 <script>
+
 let D=null,S={},MS=[],st={t:"Dashboard",m:"",f:"all",o:"def",x:0,v:"rev",h:12},CFG={},tmr=0,SYNC_TEXT="Saved locally",SYNC_KIND="ok",THEME="auto";try{THEME=localStorage.getItem("budgTheme")||"auto";if(THEME!=="auto")document.documentElement.dataset.theme=THEME;else delete document.documentElement.dataset.theme}catch(e){}try{CFG=JSON.parse(localStorage.getItem('cfg')||'{}')}catch(e){}
 let IB=[],INBOX_DIRTY=false,MAPPING_WARNINGS=[];
-function mergeInbox(rows){rows.forEach(r=>{
- if(r.t==='error')return;
- if(r.t==='remove'){const i=S.t.findIndex(t=>t.pid===r.id&&t.pending);if(i>=0){const old=S.t[i];if(!old.rv)actualTouched(old.m);S.t.splice(i,1);INBOX_DIRTY=true;}return}
- if(r.t!=='add')return;
- const postedMatch=r.pending_id?S.t.find(t=>t.pid===r.pending_id&&t.pending):null;
- if(postedMatch){INBOX_DIRTY=true;postedMatch.d=String(r.d).slice(0,10);postedMatch.m=mk(postedMatch.d);postedMatch.n=r.n||postedMatch.n;postedMatch.a=Math.abs(+r.a||0);postedMatch.signed=+r.a||0;postedMatch.ac=r.ac||postedMatch.ac;postedMatch.aid=r.aid||postedMatch.aid;postedMatch.pending=false;postedMatch.rv=mro(postedMatch.n,postedMatch.a)?.ok?0:1;postedMatch.pid=r.id;if(!postedMatch.rv)actualTouched(postedMatch.m);return}
- const same=S.t.find(t=>t.pid===r.id);
- if(same){
-  if(same.pending){INBOX_DIRTY=true;same.d=String(r.d).slice(0,10);same.m=mk(same.d);same.n=r.n||same.n;same.a=Math.abs(+r.a||0);same.signed=+r.a||0;same.ac=r.ac||same.ac;same.aid=r.aid||same.aid;same.pending=!!r.pending;if(!r.pending){same.rv=mro(same.n,same.a)?.ok?0:1;if(!same.rv)actualTouched(same.m);}}
-  return;
+function mergeInbox(rows){
+ for(const r of rows){
+  if(r.t==='error')continue;
+  if(r.t==='remove'){
+   const i=S.t.findIndex(t=>t.pid===r.id);if(i>=0&&!S.cm?.[S.t[i].m]){const old=S.t[i];if(!old.rv)actualTouched(old.m);S.t.splice(i,1);INBOX_DIRTY=true;}continue;
+  }
+  if(r.t!=='add')continue;
+  const signed=Number(r.a),d=String(r.d).slice(0,10),month=mk(d),accountId=String(r.aid||'');
+  if(!Number.isFinite(signed)||!/^\d{4}-\d{2}-\d{2}$/.test(d))continue;
+  const known=S.t.find(t=>t.pid===r.id)||(r.pending_id?S.t.find(t=>t.pid===r.pending_id&&t.pending):null);
+  if(known){
+   if(S.cm?.[known.m])continue;
+   if(known.signed!==signed||known.pending!==!!r.pending||known.pid!==r.id){INBOX_DIRTY=true;if(!known.rv)actualTouched(known.m)}
+   known.pid=r.id;known.d=d;known.m=month;known.n=r.n||known.n;known.a=Math.abs(signed);known.signed=signed;
+   known.ac=r.ac||known.ac;known.aid=accountId||known.aid;known.pending=!!r.pending;known.pending_id=r.pending_id||'';
+   // Posted transaction retains the user's review/category. Pending transactions require review.
+   if(!known.pending&&known.wasPendingReview){known.rv=1;delete known.wasPendingReview}
+   continue;
+  }
+  if(S.cm?.[month])continue; // retain closed sheets; do not silently rewrite locked periods
+  let c=mr(r.n,Math.abs(signed));if(c<0)c=ci('Misc');
+  const rule=mro(r.n,Math.abs(signed),accountId,signed);
+  const t={d,m:month,n:r.n,a:Math.abs(signed),c,rv:rule?.ok?0:1,tr:0,pid:r.id,ac:r.ac,aid:accountId,pending:!!r.pending,
+    pending_id:r.pending_id||'',signed};
+  if(rule?.dest&&signed>0){t.tr=1;t.dest=rule.dest;t.countTransfer=savingsCategoryForDestination(rule.dest)>=0;t.c=savingsCategoryForDestination(rule.dest)>=0?savingsCategoryForDestination(rule.dest):c;}
+  if(t.pending){t.rv=1;t.wasPendingReview=true}
+  S.t.push(t);INBOX_DIRTY=true;if(!t.rv)actualTouched(month);
  }
- const d=String(r.d).slice(0,10),inf=+r.a<0,a=Math.abs(+r.a||0),tr=isTr(r.n)||(inf&&r.ty==='credit');
- let c=inf&&!tr?ci('Trey Wages'):mr(r.n,a);if(c<0)c=ci('Misc');
- const rule=mro(r.n,a);
- INBOX_DIRTY=true;S.t.push({d,m:mk(d),n:r.n,a,c,rv:rule&&rule.ok?0:1,tr:tr?1:0,pid:r.id,ac:r.ac,aid:r.aid||'',pending:!!r.pending,pending_id:r.pending_id||'',signed:+r.a||0});if(rule&&rule.ok&&!r.pending)actualTouched(mk(d));
-});autoMatchTransfers()}
+ if(autoMatchTransfers())INBOX_DIRTY=true;
+}
 function autoMatchTransfers(){
- const pool=S.t.filter(t=>t.pid&&!t.pending&&!t.pairedWith&&!t.cl&&!S.cm?.[t.m]&&Number.isFinite(t.signed)&&t.signed!==0&&t.ac);
- const used=new Set();for(const t of pool){if(used.has(t.pid)||t.pairedWith)continue;
-  const cands=pool.filter(u=>u!==t&&!used.has(u.pid)&&u.ac!==t.ac&&Math.abs(u.signed+t.signed)<.011&&Math.abs(Date.parse(u.d)-Date.parse(t.d))<=2*86400000&&!u.pairedWith);
-  if(cands.length!==1)continue;const u=cands[0];const reverse=pool.filter(x=>x!==u&&!used.has(x.pid)&&x.ac!==u.ac&&Math.abs(x.signed+u.signed)<.011&&Math.abs(Date.parse(x.d)-Date.parse(u.d))<=2*86400000&&!x.pairedWith);if(reverse.length!==1)continue;
-  // Never silently delete either Plaid record. Track both, suppress the mirror and confirm classification on the next review.
-  t.transferSuggestion=u.pid;u.transferSuggestion=t.pid;used.add(t.pid);used.add(u.pid);
+ const pool=S.t.filter(t=>t.pid&&!t.pending&&!t.ig&&!t.pairedWith&&!S.cm?.[t.m]&&Number.isFinite(t.signed)&&t.signed!==0&&t.aid);
+ let changed=false;const handled=new Set();
+ for(const t of pool){if(t.signed<=0||handled.has(t.pid)||t.pairedWith)continue;
+  const possibles=pool.filter(u=>u.signed<0&&u.aid!==t.aid&&Math.abs(u.signed+t.signed)<.011&&Math.abs(Date.parse(u.d)-Date.parse(t.d))<=3*86400000&&!handled.has(u.pid));
+  if(possibles.length!==1)continue;
+  const u=possibles[0],reverse=pool.filter(x=>x.signed>0&&x.aid!==u.aid&&Math.abs(x.signed+u.signed)<.011&&Math.abs(Date.parse(x.d)-Date.parse(u.d))<=3*86400000&&!handled.has(x.pid));
+  if(reverse.length!==1)continue;
+  // Already-reviewed nontransfer categories are not overwritten without review.
+  const manuallyClassified=[t,u].some(x=>!x.rv&&!x.tr&&!isTr(x.n)&&x.c!==ci('Misc'));
+  const destinationRow=Number(S.rowmap?.[u.aid]||0);
+  const evidence=!!(t.tr||u.tr||t.dest||u.dest||isTr(t.n)||isTr(u.n)||[61,62,68,69,70,71,85].includes(destinationRow));
+  // Amount/date alone do not prove an internal transfer: suggest, never auto-convert, ambiguous pairs.
+  if(manuallyClassified||!evidence){t.transferSuggestion=u.pid;u.transferSuggestion=t.pid;continue}
+  classifyTransferPair(t,u);handled.add(t.pid);handled.add(u.pid);changed=true;
  }
+ return changed;
 }
-function applyTransferPair(encoded){const id=decodeURIComponent(encoded),t=S.t.find(x=>x.pid===id),u=S.t.find(x=>x.pid===t?.transferSuggestion);if(!t||!u||!confirm('Classify this matched pair as a transfer? Both bank records will be retained. The incoming mirror will not count toward Actuals.'))return;
- const outgoing=t.signed>0?t:u.signed>0?u:null;if(!outgoing)return alert('Transaction direction is unavailable.');const incoming=outgoing===t?u:t;
- for(const x of [outgoing,incoming]){x.originalTransfer={tr:x.tr,rv:x.rv,c:x.c,countTransfer:x.countTransfer,dest:x.dest};x.tr=1;x.rv=0;x.pairedWith=x===outgoing?incoming.pid:outgoing.pid;x.pending=false;}
- incoming.mirrorTransfer=true;outgoing.mirrorTransfer=false;
- const dst=effectiveAccounts().find(a=>a.id===incoming.aid||a.name===incoming.ac||a.displayName===incoming.ac);const row=dst?+S.rowmap[dst.id]||0:0;outgoing.dest=row||null;
- const k={68:'emergency',69:'baby',70:'house',71:'cpa',62:'invest'}[row];const cat=k?D.c.findIndex(c=>c[1]==='s'&&c[0].toLowerCase().includes(k)):-1;
- if(cat>=0){outgoing.c=cat;outgoing.countTransfer=true;}else outgoing.countTransfer=false;
- delete t.transferSuggestion;delete u.transferSuggestion;actualTouched(outgoing.m);save();go();
+function classifyTransferPair(outgoing,incoming){
+ for(const x of [outgoing,incoming]){x.tr=1;x.rv=0;x.pending=false;x.pairedWith=x===outgoing?incoming.pid:outgoing.pid;x.transferSuggestion=null;}
+ outgoing.mirrorTransfer=false;incoming.mirrorTransfer=true;
+ const account=effectiveAccounts().find(x=>x.id===incoming.aid);
+ const row=account?+S.rowmap?.[account.id]||0:0;
+ const name=String(account?.displayName||incoming.ac||'').toLowerCase();
+ let dest=row;
+ if(row===62)dest=/\b(ira|roth|retirement)\b/.test(name)?'ira':'taxable';
+ if(row===85)dest='cc:'+incoming.aid;
+ const designated=outgoing.dest;
+ if(designated&&(savingsCategoryForDestination(designated)>=0||String(designated).startsWith('cc:')))dest=designated;
+ outgoing.dest=dest||null;
+ const cat=savingsCategoryForDestination(dest);
+ outgoing.countTransfer=cat>=0;
+ if(cat>=0)outgoing.c=cat;
+ incoming.dest=outgoing.dest;incoming.countTransfer=false;
+ actualTouched(outgoing.m);actualTouched(incoming.m);
 }
+function applyTransferPair(encoded){const id=decodeURIComponent(encoded),a=S.t.find(x=>x.pid===id),b=S.t.find(x=>x.pid===a?.transferSuggestion);if(!a||!b||S.cm?.[a.m]||S.cm?.[b.m])return;
+ if(!confirm('Link these two bank transactions as a transfer? Existing nontransfer classifications will be replaced.'))return;
+ const outgoing=a.signed>0?a:b,incoming=outgoing===a?b:a;
+ if(outgoing.signed<=0||incoming.signed>=0)return alert('Invalid transaction directions.');
+ classifyTransferPair(outgoing,incoming);save();go();}
 async function refresh(){if(!await push())return;setSync('Refreshing bank transactions…','busy');try{const r=await(await fetch(CFG.u+'?action=sync&token='+encodeURIComponent(CFG.k))).json();if(r.err)throw Error(r.err);MAPPING_WARNINGS=r.mapping?.warnings||[];await boot(true)}catch(e){setSync('Not synced · retry','bad')}}
 function init(){
- Object.assign(st,{q:st.q||'',fa:st.fa||'all',fc:st.fc||'all',sel:st.sel||0,ss:st.ss||[],sp:st.sp??null,sug:st.sug||null,drafts:st.drafts||{},quickOpen:st.quickOpen||false,actualType:st.actualType||'all',actSort:st.actSort||'default',actCat:st.actCat||'all',actAcc:st.actAcc||'all',chartRanges:st.chartRanges||{},rangeWindows:st.rangeWindows||{},chartCompare:st.chartCompare||'mtd'});
- S.a=S.a||{};S.b=S.b||{};S.t=S.t||[];S.rl=S.rl||[];S.lv=S.lv||{};S.g=S.g||{hg:125000,ct:'',ca:0,cs:0};S.amap=S.amap||{};S.rowmap=S.rowmap||{};S.manualAccounts=S.manualAccounts||[];S.accountEdits=S.accountEdits||{};S.subscriptions=S.subscriptions||[];S.actualChangeAt=S.actualChangeAt||{};S.retirementEvents=S.retirementEvents||[];S.iraKeyword=S.iraKeyword||'IRA';S.projectionAudit=S.projectionAudit||{};
+ Object.assign(st,{q:st.q||'',fa:st.fa||'all',fc:st.fc||'all',sel:st.sel||0,ss:st.ss||[],sp:st.sp??null,sug:st.sug||null,drafts:st.drafts||{},quickOpen:st.quickOpen||false,actualType:st.actualType||'all',actSort:st.actSort||'default',actCat:st.actCat||'all',actAcc:st.actAcc||'all',chartRanges:st.chartRanges||{},rangeWindows:st.rangeWindows||{},chartCompare:st.chartCompare||'mtd',txnView:st.txnView||(st.v==='done'?'account':'date'),txnGroupsOpen:st.txnGroupsOpen||{},openGroups:st.openGroups||{},openAccounts:st.openAccounts||false});
+ S.a=S.a||{};S.b=S.b||{};S.t=S.t||[];S.rl=S.rl||[];S.lv=S.lv||{};S.g=S.g||{hg:125000,ct:'',ca:0,cs:0};S.amap=S.amap||{};S.rowmap=S.rowmap||{};S.manualAccounts=S.manualAccounts||[];S.accountEdits=S.accountEdits||{};S.subscriptions=S.subscriptions||[];S.actualChangeAt=S.actualChangeAt||{};S.retirementEvents=S.retirementEvents||[];S.projectionAudit=S.projectionAudit||{};
  MS=Object.keys(D.a||{}).filter(m=>/^[A-Z][a-z]{2}-\d\d$/.test(m)&&(/-26$/.test(m)?['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].includes(m.slice(0,3)):true));S.cm=S.cm||{};MS.forEach(mm=>{if(/^\w{3}-26$/.test(mm)&&['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep'].includes(mm.slice(0,3)))S.cm[mm]=1;});mergeInbox(IB);const c=mk(new Date());if(st.lastCalendarMonth!==c){st.m=MS.includes(c)?c:MS[0];st.lastCalendarMonth=c;}else if(!st.m||!MS.includes(st.m))st.m=MS.includes(c)?c:MS[0];go()
 }
 function setup(msg){m.innerHTML=`<h1>Connect</h1><div class=card><div class=mu>${msg||'Paste your Apps Script web app URL and your secret password. Stored only on this phone.'}</div><div class=row><input id=cu placeholder="Web app URL" style="width:100%"></div><div class=row><input id=ck type=password placeholder="Secret password" style="width:100%"></div><button class=b onclick="CFG={u:cu.value.trim(),k:ck.value};localStorage.setItem('cfg',JSON.stringify(CFG));boot()">Connect</button></div>`;n.innerHTML=''}
@@ -127,7 +183,28 @@ function syncUi(){const e=document.getElementById('sync-status');if(e){e.classNa
 const save=()=>{S.u=new Date().toLocaleString();try{localStorage.setItem('dc',JSON.stringify({D,S}))}catch(e){}setSync('Saved locally · syncing…','busy');clearTimeout(tmr);tmr=setTimeout(push,1200)};
 const mk=d=>{const x=typeof d=='string'&&/^\d{4}-\d\d-\d\d/.test(d)?new Date(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10)):new Date(d);return isNaN(x)?st.m:x.toLocaleString('en',{month:'short'})+'-'+String(x.getFullYear()).slice(2)};
 const ci=nm=>D.c.findIndex(c=>c[0].toLowerCase().includes(nm.toLowerCase()));
-const tx=(m,i)=>S.t.filter(t=>t.m==m&&t.c==i&&!t.cl&&!t.ig&&!t.pending&&!t.rv&&(!t.tr||(t.dest&&t.countTransfer&&D.c[i]?.[1]==='s'))).reduce((s,t)=>s+t.a,0);
+// Reviewed actual amounts are category-signed; a card refund/deposit reduces an expense.
+function signedCategoryAmount(t){
+ const type=D.c[t.c]?.[1];if(!type)return 0;
+ const raw=Number.isFinite(+t.signed)&&t.signed!==null&&t.signed!==undefined?+t.signed:+t.a;
+ if(type==='i')return -raw;
+ if(type==='s')return raw;
+ return raw;
+}
+function savingsCategoryForDestination(dest){
+ const d=String(dest??'');
+ if(d==='ira'||d==='taxable'||d==='62'||d.startsWith('invest:'))return ci('Sofi Investments');
+ const k={'68':'Emergency','69':'Baby','70':'House','71':'CPA'}[d];
+ return k?D.c.findIndex(c=>c[1]==='s'&&c[0].toLowerCase().includes(k.toLowerCase())):-1;
+}
+function savingsEffect(t,i){
+ if(!t.tr||!t.countTransfer||t.mirrorTransfer)return 0;
+ const cat=savingsCategoryForDestination(t.dest);
+ if(cat!==i)return 0;
+ // Only the outgoing side of a matched transfer counts. Reversals are signed negative.
+ return Number(t.signed)>0?Math.abs(t.a):Number(t.signed)<0?-Math.abs(t.a):0;
+}
+const tx=(m,i)=>S.t.filter(t=>t.m===m&&t.c===i&&!t.ig&&!t.pending&&!t.rv&&(!t.cl||S.cm?.[m])).reduce((s,t)=>s+(t.tr?(D.c[i]?.[1]==='s'?savingsEffect(t,i):0):signedCategoryAmount(t)),0);
 const currentMonth=()=>mk(new Date()),monthIndex=m=>MS.indexOf(m),isFuture=m=>monthIndex(m)>monthIndex(currentMonth()),hasBudget=m=>(D.budgetMonths||Object.keys(D.b||{})).includes(m);
 const wageIndices=()=>D.c.map((c,i)=>({c,i})).filter(x=>x.c[1]==='i'&&/wage|salary|paycheck|payroll/i.test(x.c[0])).map(x=>x.i);
 const tithingIndex=()=>D.c.findIndex(c=>/\btith(?:e|ing)\b/i.test(c[0]));
@@ -159,8 +236,12 @@ const effectiveAccounts=()=>[
 const validRows=[[61,'401(k)'],[62,'SoFi investments'],[66,'SoFi checking'],[67,'Available savings'],[68,'Emergency savings'],[69,'Baby fund'],[70,'House fund'],[71,'CPA fund'],[72,'Other accounts'],[82,'Debt to Kelly'],[83,'Debt to Laine'],[84,'Student loan'],[85,'Credit cards']];
 const rowPicker=(id,selected)=>`<select id="accountRow" style="width:100%"><option value="">Not mapped</option>${validRows.map(([n,label])=>`<option value="${n}" ${n===+selected?'selected':''}>Row ${n} · ${escHtml(label)}</option>`).join('')}</select>`;
 function accountKind(a){const row=+(S.rowmap||{})[a.id],name=(a.displayName||'').toLowerCase();if(row===85||/card|credit/.test(name))return 'Credit Cards';if([82,83,84].includes(row)||/debt|loan/.test(name))return 'Debt';if(row===61||row===62||/401|ira|invest|brokerage/.test(name))return 'Investments';if([66,67,68,69,70,71,72].includes(row)||/checking|saving|cash|fund/.test(name))return 'Cash & Savings';return 'Other Assets'}
-function groupedAccountsHtml(rows){const groups=['Cash & Savings','Investments','Credit Cards','Debt','Other Assets'];return groups.map(g=>{const list=rows.filter(a=>accountKind(a)===g);if(!list.length)return '';const total=list.reduce((v,a)=>v+(+a.effective||0),0);const nested=list.filter(a=>/emergency|baby fund|house fund|cpa fund/i.test(a.displayName));const primary=list.filter(a=>!nested.includes(a));const make=a=>`<div class="accountrow"><div><b>${escHtml(a.displayName)}</b><div class="mu">${a.source==='manual'?'Manual':'Plaid'} · ${S.rowmap?.[a.id]?'Row '+S.rowmap[a.id]:'Not mapped'}</div></div><div style="text-align:right"><b>${$2(a.effective||0)}</b>${a.override?`<div class="mu">Plaid: ${$2(a.reported||0)}</div>`:''}</div><button class="smallbtn" onclick="editAccount('${encodeURIComponent(a.id)}')">Edit</button></div>`;return `<details class="account-group"><summary><b>${g}</b><strong>${$2(total)}</strong></summary>${primary.map(make).join('')}${nested.length?`<details class="funds-group" style="margin-left:16px;border-left:2px solid var(--ln);padding-left:10px"><summary>Savings funds <span>${$2(nested.reduce((s,x)=>s+(x.effective||0),0))}</span></summary>${nested.map(make).join('')}</details>`:''}</details>`}).join('')}
-function accountsCard(){const rows=effectiveAccounts();return `<details class="card" id="accountsCard"><summary style="cursor:pointer;font-weight:700">▤ Accounts &amp; Balances <span class="mu" style="font-weight:400">· tap to expand</span></summary><div style="margin-top:14px"><div class="action-top"><div class="mu">Plaid balances + manually reconciled accounts</div><button class="p smallbtn" onclick="editAccount()">+ Add account</button></div><div class="action-top" style="margin-top:9px"><span class="mu">Sync automatically where supported · refresh for latest</span><button class="smallbtn" onclick="refresh()">↻ Refresh</button></div>${rows.length?groupedAccountsHtml(rows):''}${MAPPING_WARNINGS.filter(x=>!String(x).startsWith('This month is closed')).length?`<div class="warn r"><b>Mapping needs attention</b>${MAPPING_WARNINGS.filter(x=>!String(x).startsWith('This month is closed')).map(w=>`<div>${escHtml(w)}</div>`).join('')}</div>`:''}<div class="mu" style="margin-top:10px">Mappings update the current open month in Main Page after sync. The final mapped snapshot is written when you close that month. If Plaid combines vaults, add manual accounts only for balances that are not already included in a mapped Plaid account. Budgy can flag unmapped accounts and possible group differences, but cannot verify a true external balance independently.</div><details class="account-group"><summary><b>Account reconciliation</b><span class=mu>Check mapped balances</span></summary>${reconcileCard()}<div class="mu">Budgy can suggest accounts to verify. Differences are not proof of an incorrect balance.</div></details></div></details>`}
+function groupedAccountsHtml(rows){const groups=['Cash & Savings','Investments','Credit Cards','Debt','Other Assets'];return groups.map(g=>{const list=rows.filter(a=>accountKind(a)===g);if(!list.length)return '';
+ const total=list.reduce((v,a)=>v+(+a.effective||0),0),nested=list.filter(a=>/emergency|baby fund|house fund|cpa fund/i.test(a.displayName)),primary=list.filter(a=>!nested.includes(a));
+ const make=a=>`<div class="accountrow"><div><b>${escHtml(a.displayName)}</b><div class="mu">${a.source==='manual'?'Manual':'Plaid'} · ${S.rowmap?.[a.id]?'Row '+S.rowmap[a.id]:'Not mapped'}</div></div><div style="text-align:right"><b>${$2(a.effective||0)}</b>${a.override?`<div class="mu">Plaid: ${$2(a.reported||0)}</div>`:''}</div><button class="smallbtn" onclick="editAccount('${encodeURIComponent(a.id)}')">Edit</button></div>`;
+ return `<details class="account-group kind-${g.toLowerCase().replace(/[^a-z]+/g,'-')}" ${st.openGroups[g]?'open':''}><summary onclick="st.openGroups['${g}']=!this.parentNode.open"><b>${g}</b><strong>${$2(total)}</strong></summary>${primary.map(make).join('')}${nested.length?`<details class="funds-group" ${st.openGroups[g+' funds']?'open':''} style="margin-left:16px;border-left:2px solid var(--ln);padding-left:10px"><summary onclick="st.openGroups['${g} funds']=!this.parentNode.open">Savings funds <span>${$2(nested.reduce((s,x)=>s+(x.effective||0),0))}</span></summary>${nested.map(make).join('')}</details>`:''}</details>`}).join('')}
+function accountsCard(){const rows=effectiveAccounts(),stamp=D.balanceSyncAt?new Date(D.balanceSyncAt).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not recorded';
+ return `<details class="card" id="accountsCard" ${st.openAccounts?'open':''}><summary onclick="st.openAccounts=!this.parentNode.open" style="cursor:pointer;font-weight:700">▤ Accounts &amp; Balances <span class="mu">· tap to expand</span></summary><div style="margin-top:14px"><div class="action-top"><div class="mu">Plaid balances + manually reconciled accounts</div><button class="p smallbtn" onclick="editAccount()">+ Add account</button></div><div class="action-top" style="margin-top:9px"><span class="mu">Last refreshed: ${escHtml(stamp)}</span><button class="smallbtn" onclick="refresh()">↻ Refresh</button></div>${rows.length?groupedAccountsHtml(rows):''}${MAPPING_WARNINGS.filter(x=>!String(x).startsWith('This month is closed')).length?`<div class="warn r"><b>Mapping needs attention</b>${MAPPING_WARNINGS.filter(x=>!String(x).startsWith('This month is closed')).map(w=>`<div>${escHtml(w)}</div>`).join('')}</div>`:''}<div class="mu" style="margin-top:10px">Mapped balances update the current open month's Main Page cells where safe. If a SoFi Plaid account already includes its savings vaults, do not map its full combined balance and separate vault balances again.</div><details class="account-group" ${st.openGroups.recon?'open':''}><summary onclick="st.openGroups.recon=!this.parentNode.open"><b>Account reconciliation</b><span class=mu>Check mapped balances</span></summary>${reconcileCard()}</details></div></details>`}
 function editAccount(encoded){const a=encoded?effectiveAccounts().find(x=>x.id===decodeURIComponent(encoded)):null;if(encoded&&!a)return;
  const amount=a?(Number.isFinite(a.effective)?a.effective:0):0,ism=a?.source==='manual';
  openPanel(a?'Edit account':'Add manual account',`<div class="field"><label>Display name</label><input id="accountName" value="${escAttr(a?.displayName||'')}" placeholder="e.g. Apple Card or 401(k)"></div><div class="field"><label>Current balance · enter positive amount owed for debt</label><input id="accountBalance" type="number" step="0.01" value="${amount}"></div><div class="field"><label>Linked Main Page balance-sheet row</label>${rowPicker(a?.id,S.rowmap[a?.id])}</div>${a?.source==='plaid'?`<p class="mu">Plaid reported ${a.reported==null?'no balance':$2(a.reported)}. A manual adjustment remains in place until cleared; it will not change the bank balance.</p>`:''}<button class="p" style="width:100%" onclick="saveAccount(${a?`'${encodeURIComponent(a.id)}'`:'null'})">${a?'Save changes':'Add account'}</button>${a?.source==='plaid'&&a.override?`<button style="width:100%;margin-top:8px" onclick="clearAccount('${encodeURIComponent(a.id)}')">Clear override / use Plaid</button>`:''}${ism?`<button style="width:100%;margin-top:8px;color:var(--red)" onclick="deleteAccount('${encodeURIComponent(a.id)}')">Delete manual account</button>`:''}`)}
@@ -181,8 +262,41 @@ function editSubscription(encoded){const sub=encoded?(S.subscriptions||[]).find(
  openPanel(sub?'Edit subscription':'Add subscription',`<div class="field"><label>Merchant</label><input id="subName" value="${escAttr(sub?.name||'')}"></div><div class="field"><label>Monthly amount or range (e.g. $15 or $10–15)</label><input id="subAmount" value="${escAttr(sub?.amount||'')}"></div><div class="picker-grid"><div class="field"><label>Payment day (1–31)</label><input id="subDay" type="number" min="1" max="31" value="${sub?.day||1}"></div><div class="field"><label>End day for range (optional)</label><input id="subEnd" type="number" min="1" max="31" value="${sub?.end||sub?.day||1}"></div></div><button class="p" style="width:100%" onclick="saveSubscription(${sub?`'${encodeURIComponent(sub.id)}'`:'null'})">Save subscription</button>${sub?`<button style="width:100%;margin-top:8px;color:var(--red)" onclick="deleteSubscription('${encodeURIComponent(sub.id)}')">Delete subscription</button>`:''}`)}
 function saveSubscription(encoded){const name=document.getElementById('subName').value.trim(),amount=document.getElementById('subAmount').value.trim(),day=+document.getElementById('subDay').value,end=+document.getElementById('subEnd').value||day;if(!name||!amount||!Number.isInteger(day)||day<1||day>31||!Number.isInteger(end)||end<day||end>31)return alert('Enter a merchant, an amount, and a valid payment-day range (1–31).');const id=encoded?decodeURIComponent(encoded):'sub:'+Date.now();const next={id,name,amount,day,end};S.subscriptions=S.subscriptions||[];const j=S.subscriptions.findIndex(x=>x.id===id);if(j<0)S.subscriptions.push(next);else S.subscriptions[j]=next;closePanel();save();go()}
 function deleteSubscription(encoded){if(!confirm('Delete this subscription?'))return;S.subscriptions=S.subscriptions.filter(x=>x.id!==decodeURIComponent(encoded));closePanel();save();go()}
-function dayPanel(day){const rows=S.t.filter(t=>t.d===day&&!t.rv&&!t.pending&&!t.ig&&!t.tr&&D.c[t.c]&&'ad'.includes(D.c[t.c][1]));const amount=rows.reduce((v,t)=>v+t.a,0);openPanel('Spending · '+day,`<div class="metric">${$2(amount)}</div>${rows.map(t=>`<div class="row"><span><b>${escHtml(tidy(t.n))}</b><br><span class="mu">${escHtml(D.c[t.c]?.[0]||'')} · ${escHtml(t.ac||'Manual')}</span></span><b>${$2(t.a)}</b></div>`).join('')||'<p class="mu">No reviewed spending for this day.</p>'}`)}
-function closeMonth(){const mm=st.m;if(S.cm?.[mm])return;const unreviewed=S.t.filter(t=>t.m===mm&&(t.rv||t.pending)).length;const mismatch=reconciliationInfo(mm).filter(x=>Math.abs(x.diff)>1).length;const missing=effectiveAccounts().filter(x=>!S.rowmap?.[x.id]).length;const checks=['Reviewed pending transactions: '+(unreviewed?unreviewed+' still unreviewed':'done'),'Account reconciliation: '+(mismatch?mismatch+' mismatched group(s)':'no flagged differences'),'Account mapping: '+(missing?missing+' unmapped account(s)':'complete'),'Tithing: '+(tithingIndex()<0?'category not found':$(A(mm)[tithingIndex()]||0)+' paid vs '+$(tithingTarget(mm,'actual')||0)+' target'),'Retirement: '+$(retirementAmounts(mm).total)+' recorded (401(k) and IRA)','Source: Main Page totals will be frozen once closed'];if(!confirm('Month-end checklist (advisory; you may close with outstanding items):\n\n'+checks.map(x=>'• '+x).join('\n')+'\n\nClose '+mm+'? This finalizes reviewed category totals and does not automatically update prior months.'))return;S.projectionAudit=S.projectionAudit||{};S.projectionAudit[mm]={closedAt:timestampNow(),forecast:S.lastMonthEndEstimate?.[mm]??null,actual:T(A(mm)).net};S.a[mm]=[...A(mm)];(S.cm=S.cm||{})[mm]=1;st.justClosed=mm;S.t.forEach(t=>{if(t.m===mm)t.cl=1});delete S.lv[mm];actualTouched(mm);save();go()}
+function dayPanel(day){const rows=S.t.filter(t=>t.d===day&&!t.rv&&!t.pending&&!t.ig&&!t.tr&&D.c[t.c]&&'ad'.includes(D.c[t.c][1]));const amount=rows.reduce((v,t)=>v+signedCategoryAmount(t),0);openPanel('Spending · '+day,`<div class="metric">${$2(amount)}</div>${rows.map(t=>`<div class="row"><span><b>${escHtml(tidy(t.n))}</b><br><span class="mu">${escHtml(D.c[t.c]?.[0]||'')} · ${escHtml(t.ac||'Manual')}</span></span><b>${$2(t.a)}</b></div>`).join('')||'<p class="mu">No reviewed spending for this day.</p>'}`)}
+async function closeMonth(){const mm=st.m;if(S.cm?.[mm]||isFuture(mm))return alert('Only an open current or past month can be closed.');
+ const summary=monthCloseStatus(mm);const rows=[61,62,66,67,68,69,70,71,72,77,78,82,83,84,85],labels={61:'401(k) balance',62:'SoFi combined investments',66:'SoFi checking',67:'Available savings',68:'Emergency fund',69:'Baby fund',70:'House fund',71:'CPA fund',72:'Other accounts',77:'Equinox / vehicle',78:'Second vehicle',82:'Debt to Kelly',83:'Debt to Laine',84:'Student loans',85:'Credit cards'};
+ const byRow={};if(mm===currentMonth()){effectiveAccounts().forEach(a=>{const r=Number(S.rowmap?.[a.id]);if(rows.includes(r)&&Number.isFinite(a.effective)&&(!a.updated||Date.now()-Date.parse(a.updated)<6*3600000)){byRow[r]=(byRow[r]||0)+(r>=82?-Math.abs(a.effective):a.effective);}})}
+ const prior=D.balanceRows?.[mm]||{},saved=S.closeDrafts?.[mm]||{};
+ const vals=rows.map(r=>{const recommended=saved[r]??(mm===currentMonth()&&byRow[r]!=null?byRow[r]:prior[r]);return `<div class="row"><label for="closeBalance${r}">${labels[r]}</label><input class="n" id="closeBalance${r}" inputmode="decimal" value="${Number.isFinite(+recommended)?+recommended:''}" aria-label="Confirm ${labels[r]}" /></div>`}).join('');
+ const a=A(mm),income=T(a);
+ openPanel('Close '+mm,`<p class="mu">Preview the reviewed actuals and verify the ending balances. Only the selected Main Page column is finalized. Future Budget formulas are preserved.</p><div class="close-preview"><div class="row"><span>Actual income</span><b>${$2(income.i)}</b></div><div class="row"><span>Actual expenses</span><b>${$2(income.exp)}</b></div><div class="row"><span>Net income</span><b>${$2(income.net)}</b></div><div class="row"><span>Savings + investments</span><b>${$2(income.s)}</b></div><div class="row"><span>401(k) contributions</span><b>${$2(retirementAmounts(mm).own401)}</b></div><div class="row"><span>Roth IRA contributions</span><b>${$2(retirementAmounts(mm).ira)}</b></div></div><b>Automatically checked</b>${monthStatusHtml(summary)}<h3>Confirm balances as of ${escHtml(mm)} month-end</h3><p class="mu">${mm===currentMonth()?'Recent mapped balances are suggested when available.':'This is a past month. Current bank balances are NOT historical balances.'} Values below are suggestions only. Verify from your month-end statements; zero is valid when confirmed.</p>${vals}<label class="row"><span><b>I verified these balances represent ${escHtml(mm)} month-end</b></span><input type="checkbox" id="confirmBalances" /></label>${summary.attention.length?`<label class="row"><span>I understand the ${summary.attention.length} outstanding reconciliation item(s) will be recorded as exceptions</span><input type="checkbox" id="confirmExceptions" /></label>`:''}<button class="p" id="commitClose" style="width:100%;margin-top:12px" onclick="commitMonthClose('${mm}')">Confirm and close ${mm}</button><p class="mu">This writes a before-image to BudgCloseAudit. Review the writeback result before considering the month closed.</p>`);
+}
+function monthCloseStatus(mm){const review=S.t.filter(t=>t.m===mm&&!t.ig&&(t.rv||t.pending)).length;
+ const unpaired=S.t.filter(t=>t.m===mm&&!t.rv&&!t.ig&&t.tr&&t.signed>0&&!t.pairedWith&&!t.dest).length;
+ const accounts=effectiveAccounts(),unmapped=accounts.filter(a=>!S.rowmap?.[a.id]).length;
+ const reconciliation=mm===currentMonth()?reconciliationInfo(mm).filter(x=>Math.abs(x.diff)>1).length:0;
+ const last=D.balanceSyncAt,stale=!!(mm===currentMonth()&&(!last||Date.now()-Date.parse(last)>24*3600000));
+ const checks=[{name:'All imported transactions reviewed',ok:review===0,detail:review+' awaiting review'},{name:'Transfers classified / matched',ok:unpaired===0,detail:unpaired+' missing destinations'},{name:'All accounts mapped',ok:unmapped===0,detail:unmapped+' unmapped account(s)'},{name:'Mapped balances reconcile',ok:reconciliation===0,detail:reconciliation+' current-month differences; past-month requires statement verification'},{name:'Bank balances refreshed',ok:!stale,detail:stale?'Refresh connected accounts before confirming':'Recent / past month requires statement verification'},{name:'401(k) + IRA tracking reviewed',ok:(S.retirementEvents||[]).some(x=>x.m===mm)||iraContributions(mm)>0,detail:'Verify payroll + IRA contributions'},{name:'Tithing reviewed',ok:tithingIndex()>=0&&A(mm)[tithingIndex()]>=Math.max(0,tithingTarget(mm,'actual')||0),detail:'Compare paid and target'}];
+ return {checks,attention:checks.filter(x=>!x.ok)};
+}
+function monthStatusHtml(status){return status.checks.map(c=>`<div class="checkline"><span class="checkstatus ${c.ok?'ok':'attention'}">${c.ok?'✓ Auto':'! Check'}</span><div><b>${escHtml(c.name)}</b><div class="mu">${escHtml(c.detail)}</div></div></div>`).join('')}
+async function commitMonthClose(mm){if(S.cm?.[mm]||isFuture(mm))return;
+ if(!document.getElementById('confirmBalances')?.checked)return alert('Confirm you verified the month-end balance values.');
+ const status=monthCloseStatus(mm),exceptions=!!document.getElementById('confirmExceptions')?.checked;
+ if(status.attention.length&&!exceptions)return alert('Acknowledge the outstanding reconciliation items before closing.');
+ const rows=[61,62,66,67,68,69,70,71,72,77,78,82,83,84,85],balances={};
+ for(const row of rows){const input=document.getElementById('closeBalance'+row),raw=input?.value.trim();if(raw===''||!Number.isFinite(Number(raw)))return alert('Enter a verified amount for '+row+'.');balances[row]=Number(raw);}
+ S.closeDrafts=S.closeDrafts||{};S.closeDrafts[mm]=balances;
+ const btn=document.getElementById('commitClose');btn.disabled=true;btn.textContent='Checking spreadsheet…';
+ try{
+  clearTimeout(tmr);const state=JSON.parse(JSON.stringify(S));state.u=new Date().toISOString();
+  const payload={token:CFG.k,action:'closeMonthV9',month:mm,state,actuals:A(mm),balances,preflight:status.checks,confirmExceptions:exceptions};
+  const response=await fetch(CFG.u,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)}),res=await response.json();
+  if(!res.ok)throw Error(res.err||'Close was not confirmed by spreadsheet.');
+  S=res.state;st.justClosed=null;closePanel();setSync('Month closed · spreadsheet verified','ok');await boot(true);
+  alert(mm+' is closed. Main Page actuals and ending balances were verified.');
+ }catch(e){btn.disabled=false;btn.textContent='Retry close';setSync('Close failed · nothing marked closed','bad');alert(String(e.message||e)+'\nCheck BudgCloseAudit and keep this month open until verified.');}
+}
 const DASH_WIDGETS=[['worth','Net worth & score'],['summary','Monthly summary'],['charts','Income, Expenses & Spending Trends'],['allocation','50/30/20 Rule'],['retirement','Retirement Target'],['week','This Past Week'],['subscriptions','Subscriptions'],['warnings','Budget Warnings']];
 const DEFAULT_DASH_ORDER=DASH_WIDGETS.map(x=>x[0]);
 function dashOrder(){let saved=(S.dashboardOrder||[]).map(x=>x==='income'||x==='trends'?'charts':x).filter((x,i,a)=>a.indexOf(x)===i&&DEFAULT_DASH_ORDER.includes(x));const mandatory=['worth','summary'];return [...mandatory,...saved.filter(x=>!mandatory.includes(x)),...DEFAULT_DASH_ORDER.filter(x=>!mandatory.includes(x)&&!saved.includes(x))]}
@@ -196,31 +310,25 @@ function dashOrderSettings(){return `<div class="card"><b>Dashboard tile order</
 
 function collapsible(title,html,open=false){return `<details class="card" ${open?'open':''}><summary style="cursor:pointer;font-weight:700;font-size:16px">${title} <span class="mu" style="font-size:12px;font-weight:400">· expand</span></summary><div style="margin-top:14px">${html}</div></details>`}
 function cashFlow(m){
- const linked=effectiveAccounts().filter(a=>a.source==='plaid'&&accountKind(a)==='Cash & Savings');
- const ids=new Set(linked.map(a=>a.id).filter(Boolean)),names=new Set(linked.flatMap(a=>[a.name,a.displayName].filter(Boolean).map(x=>String(x).toLowerCase())));
- const raw=S.t.filter(t=>t.m===m&&!t.pending&&!t.ig&&typeof t.signed==='number'&&Number.isFinite(t.signed)&&(ids.has(t.aid)||(t.ac&&names.has(String(t.ac).toLowerCase()))));
- const ownCashRows=new Set([66,67,68,69,70,71,72]);
- // Matched cash-to-cash moves are internal and contribute zero. Investment transfers reduce cash.
- const pairedToCash=t=>t.tr&&t.pairedWith&&S.t.some(u=>u.pid===t.pairedWith&&(ids.has(u.aid)||(u.ac&&names.has(String(u.ac).toLowerCase()))));
- const posted=raw.filter(t=>!t.rv&&(!t.cl||S.cm?.[m])&&!t.mirrorTransfer&&!(t.tr&&ownCashRows.has(+t.dest))&&!pairedToCash(t));
+ const all=effectiveAccounts(),cashIds=new Set(all.filter(a=>a.source==='plaid'&&accountKind(a)==='Cash & Savings').map(a=>a.id));
+ const sourceRows=new Set([66,67,68,69,70,71,72]);
+ const eligible=S.t.filter(t=>t.m===m&&!t.pending&&!t.ig&&!t.rv&&t.pid&&typeof t.signed==='number'&&Number.isFinite(t.signed)&&cashIds.has(t.aid));
+ const pairedCash=t=>t.pairedWith&&S.t.some(u=>u.pid===t.pairedWith&&cashIds.has(u.aid));
+ const excluded=t=>pairedCash(t)||(t.tr&&sourceRows.has(+t.dest));
+ const posted=eligible.filter(t=>!excluded(t));
  const cash=posted.reduce((v,t)=>v-t.signed,0);
- // No independent month-end balance snapshots: earlier bank flows cannot be certified.
- const coverage=posted.length>0&&m===currentMonth();
- return {cash,coverage,records:posted.length,partial:true,excluded:raw.length-posted.length};
+ const allMonth=S.t.filter(t=>t.m===m&&t.pid&&cashIds.has(t.aid)),pending=allMonth.filter(t=>t.pending||t.rv).length;
+ return {cash,coverage:posted.length>0||eligible.length>0,records:posted.length,partial:pending>0||m!==currentMonth(),
+  excluded:eligible.length-posted.length,pending,linkedCashAccounts:cashIds.size,
+  note:cashIds.size===0?'No mapped Plaid cash accounts':!allMonth.length?'No imported bank transactions from linked cash accounts':pending?'Some transactions remain unreviewed':'Reviewed bank movement; cash-to-cash transfers excluded'};
 }
-
 function reconcileCard(){const rows=reconciliationInfo(st.m);return `<div class="mu">Compare mapped Plaid/manual accounts with Main Page totals. A difference may reflect stale balances, missing mappings or a SoFi fund counted twice. This cannot verify the external true value.</div>${rows.length?rows.map(x=>`<div class="row"><span><b>${escHtml(x.label)}</b><br><span class="mu">Mapped ${$(x.mapped)} · Sheet ${$(x.expected)}</span></span><strong style="color:${Math.abs(x.diff)>1?'var(--red)':'var(--grn)'}">${$(x.diff)} difference</strong></div>`).join(''):'<div class="mu">Map at least one account to see comparisons.</div>'}`}
 function moneyTone(delta,scale=15){const v=Math.max(-1,Math.min(1,delta/scale));if(Math.abs(v)<.12)return 'var(--mu)';return `hsl(${v>0?142:5},${Math.round(29+Math.abs(v)*38)}%,${Math.round(48-Math.abs(v)*10)}%)`}
 function allocationCard(){const t=T(A(st.m)),inc=t.i,needs=t.ess,wants=t.d,saved=inc-t.exp,pct=x=>inc>0?100*x/inc:null;const np=pct(needs),wp=pct(wants),sp=pct(saved),nice=x=>x==null?'—':(Math.round(x*10)/10).toFixed(1)+'%';
  const color=(value,target,preferLess)=>value==null?'var(--mu)':moneyTone(preferLess?target-value:value-target);
  const bar=inc>0?`<div class="alloc-bar"><span style="width:${Math.max(0,Math.min(100,np))}%;background:#4d927b"></span><span style="width:${Math.max(0,Math.min(100-np,wp))}%;background:#d4a253"></span><span style="width:${Math.max(0,Math.min(100-np-wp,sp))}%;background:#638db8"></span></div><div class="alloc-targets"><i style="left:50%"></i><i style="left:80%"></i></div>`:'<div class="mu">Income has not been recorded for this month.</div>';
  return `${bar}<div class="alloc-legend"><span><i style="background:#4d927b"></i>Needs <b style="color:${color(np,50,true)}">${nice(np)}</b></span><span><i style="background:#d4a253"></i>Wants <b style="color:${color(wp,30,true)}">${nice(wp)}</b></span><span><i style="background:#638db8"></i>Savings <b style="color:${color(sp,20,false)}">${nice(sp)}</b></span></div><div class="analysis-body" hidden><div class="row"><span>Needs</span><b>${$(needs)}</b></div><div class="row"><span>Wants</span><b>${$(wants)}</b></div><div class="row"><span>Savings (income less expenses)</span><b>${$(saved)}</b></div></div>`}
-function iraContributions(mm){
- const keyword=String(S.iraKeyword||'IRA').trim().toLowerCase();if(!keyword)return 0;
- const relevant=S.t.filter(t=>t.m===mm&&!t.rv&&!t.pending&&!t.ig&&!t.mirrorTransfer&&(typeof t.signed==='number'?t.signed>0:!D.c[t.c]||D.c[t.c][1]!=='i')&&String(t.n||'').toLowerCase().includes(keyword));
- // Confirmed transfer pairs have one outgoing side. Do not add mirrored bank entries.
- return relevant.reduce((n,t)=>n+Math.max(0,+t.a||0),0);
-}
+function iraContributions(mm){return S.t.filter(t=>t.m===mm&&!t.rv&&!t.pending&&!t.ig&&!t.mirrorTransfer&&t.tr&&String(t.dest)==='ira'&&Number(t.signed)>0).reduce((n,t)=>n+Math.abs(t.a),0)}
 function retirementAmounts(mm){const own401=(S.retirementEvents||[]).filter(x=>x.m===mm&&x.type==='401k').reduce((n,x)=>n+(+x.a||0),0),ira=iraContributions(mm);return {own401,ira,total:own401+ira}}
 function retirementCard(){const mm=st.m,actual=retirementAmounts(mm),income=T(isFuture(mm)?B(mm):A(mm)).i;
  const rate=income>0&&!isFuture(mm)?actual.total/income*100:null,fmt=rate==null?'—':rate.toFixed(1)+'%',tone=rate==null?'var(--mu)':rate>=15?'var(--grn)':rate>=10?'var(--mu)':'var(--red)';
@@ -228,12 +336,12 @@ function retirementCard(){const mm=st.m,actual=retirementAmounts(mm),income=T(is
 function trendComparison(){const m=st.m,idx=MS.indexOf(m),prev=MS[idx-1],today=new Date(),day=m===mk(today)?today.getDate():new Date(2000+ +m.slice(-2),['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m.slice(0,3))+1,0).getDate(),tab=T(A(m));
  if(!prev||isFuture(m))return {ok:false};
  const rows=S.t.filter(t=>t.m===prev&&t.d&&!t.pending&&!t.ig&&!t.rv&&!t.mirrorTransfer&&(!t.tr||t.countTransfer));
- const all=rows.filter(t=>!t.tr||t.countTransfer);const check=D.c.map((_,i)=>all.filter(t=>t.c===i).reduce((v,t)=>v+t.a,0));const base=A(prev);
+ const all=rows.filter(t=>!t.tr||t.countTransfer);const check=D.c.map((_,i)=>all.filter(t=>t.c===i).reduce((v,t)=>v+(t.tr?savingsEffect(t,i):signedCategoryAmount(t)),0));const base=A(prev);
  const approximate= D.c.some((c,i)=>(c[1]==='i'||c[1]==='a'||c[1]==='d'||c[1]==='f')&&Math.abs((check[i]||0)-(base[i]||0))>Math.max(5,Math.abs(base[i]||0)*.05));
  const comparable=!approximate&&rows.length>0;
  if(!comparable){const past=T(A(prev)),estimated=m===currentMonth()&&!S.cm?.[m],nowValues=estimated?B(m):A(m),nowTotal=T(nowValues);const increases=D.c.map((c,i)=>({c,i,delta:(nowValues[i]||0)-(A(prev)[i]||0)})).filter(x=>'ad'.includes(x.c[1])).sort((a,b)=>b.delta-a.delta);return {ok:true,mode:estimated?'estimated':'full',inc:nowTotal.i-past.i,incPct:past.i?(nowTotal.i-past.i)/past.i*100:null,exp:nowTotal.exp-past.exp,expPct:past.exp?(nowTotal.exp-past.exp)/past.exp*100:null,worst:increases.find(x=>x.delta>0)};}
  const cutoff=Math.min(day,new Date(2000+ +prev.slice(-2),['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(prev.slice(0,3))+1,0).getDate());
- const sub=D.c.map((c,i)=>all.filter(t=>t.c===i&&+t.d.slice(8,10)<=cutoff).reduce((v,t)=>v+t.a,0));const last=T(sub);
+ const sub=D.c.map((c,i)=>all.filter(t=>t.c===i&&+t.d.slice(8,10)<=cutoff).reduce((v,t)=>v+signedCategoryAmount(t),0));const last=T(sub);
  const increases=D.c.map((c,i)=>({c,i,delta:(A(m)[i]||0)-(sub[i]||0)})).filter(x=>'ad'.includes(x.c[1])).sort((a,b)=>b.delta-a.delta);
  return {ok:true,inc:tab.i-last.i,incPct:last.i?(tab.i-last.i)/last.i*100:null,exp:tab.exp-last.exp,expPct:last.exp?(tab.exp-last.exp)/last.exp*100:null,worst:increases.find(x=>x.delta>0)};
 }
@@ -244,12 +352,11 @@ function miniChartSummary(){const comp=trendComparison(),v=comp.ok?comp:null;
 function analysisTile(id,title,brief,detail,wide=false,other=''){return `<div class="card analysis-card ${wide?'wide':''}" data-analysis-id="${id}"><div class="analysis-head"><strong>${title}</strong><button class="analysis-toggle" aria-label="Expand ${escAttr(title)}" onclick="toggleAnalysis('${id}')">⌄</button></div>${brief}<div class="analysis-extra" hidden>${detail}</div>${other}</div>`}
 function toggleAnalysis(id){const card=document.querySelector('[data-analysis-id="'+id+'"]');if(!card)return;const e=card.querySelector('.analysis-extra'),open=e.hidden;e.hidden=!open;card.querySelector('.analysis-toggle').textContent=open?'⌃':'⌄';if(open){card.querySelectorAll('.analysis-body').forEach(x=>x.hidden=false);if(id==='charts'){drawRange('income');drawRange('trends')}}}
 function chooseAnalysisChart(kind){st.chartView=kind;const a=document.getElementById('incomePanel'),b=document.getElementById('trendsPanel');if(a)a.hidden=kind!=='income';if(b)b.hidden=kind!=='trends';document.querySelectorAll('.switch-chart button').forEach(e=>e.classList.toggle('selected',e.dataset.kind===kind))}
-function chartsCard(){const comp=miniChartSummary(),historyEnd=Math.max(0,MS.indexOf(currentMonth())),last=MS.slice(Math.max(0,historyEnd-5),historyEnd+1),xs=last.map(m=>T(A(m)).i),ys=last.map(m=>T(A(m)).exp),mx=Math.max(...xs,...ys,1),Y=x=>36-x/mx*32,X=i=>i*60/Math.max(1,last.length-1);const line=(values,color)=>`<polyline points="${values.map((v,i)=>X(i)+','+Y(v)).join(' ')}" fill="none" stroke="${color}" stroke-width="1.8"/>`;
- const spark=`<div class="sparklines"><svg viewBox="0 0 60 40" preserveAspectRatio="none" aria-label="Recent monthly income and expense direction">${line(xs,'#47a371')}${line(ys,'#e36a61')}</svg></div><div class="micro-legend"><span><i style="background:#47a371"></i>Income</span><span><i style="background:#e36a61"></i>Expenses</span><span>Previous months</span></div>`;
+function chartsCard(){const comp=miniChartSummary();
  const buttons=`<div class="switch-chart"><button data-kind="income" class="${(st.chartView||'income')==='income'?'selected':''}" onclick="chooseAnalysisChart('income')">Income &amp; Expenses</button><button data-kind="trends" class="${st.chartView==='trends'?'selected':''}" onclick="chooseAnalysisChart('trends')">Spending Trends</button></div>`;
  const c1=`<div id="incomePanel" ${st.chartView==='trends'?'hidden':''}>${chartCompareToggle('income')}${chartRangeSlider('income')}<div id="incomeGraph">${incomeExpenseGraph()}</div></div>`;
  const c2=`<div id="trendsPanel" ${st.chartView==='trends'?'':'hidden'}><div class="row"><span class="mu">Customize categories to compare</span><button class="smallbtn" onclick="configureTrends()">Customize</button></div>${chartCompareToggle('trends')}${chartRangeSlider('trends')}<div id="trendsGraph">${trendsGraph()}</div></div>`;
- return analysisTile('charts','Income, Expenses &amp; Spending Trends',comp+spark,buttons+c1+c2,true)}
+ return analysisTile('charts','Income, Expenses &amp; Spending Trends',comp,buttons+c1+c2,true)}
 function changeChartCompare(kind,mode,btn){st.chartCompare=mode;document.querySelectorAll('.switch-chart').forEach(e=>e.dataset.compare=mode);btn.parentNode.querySelectorAll('button').forEach(e=>e.classList.toggle('on',e===btn));repaintChart(kind)}
 function chartCompareToggle(kind){return `<div class="seg"><button class="${st.chartCompare==='mtd'?'on':''}" onclick="changeChartCompare('${kind}','mtd',this)">Month-to-date</button><button class="${st.chartCompare==='full'?'on':''}" onclick="changeChartCompare('${kind}','full',this)">Full months</button></div><div class="mu">MTD uses comparable transaction history where complete; otherwise full-month values are shown. Future points are Budget projections.</div>`}
 function weeklyTile(){let h=wk().replace(/^<div class="card">/,'').replace(/<\/div>$/,'');return `<div class="card analysis-card wide week-static" data-analysis-id="week"><div class="analysis-head"><strong>This Past Week</strong></div><div class="week-wrap">${h}</div></div>`}
@@ -287,7 +394,7 @@ function dash(){
  const tile=(label,v,sub,bar,color,sty)=>`<div class="card"><div class="tile-title">${label}</div><div class="metric" ${sty?`style="color:${sty}"`:''}>${$(v)}</div><div class="tile-small">${sub}</div>${bar!=null?`<div class="bar" style="margin-top:8px"><i style="width:${Math.min(100,Math.max(0,bar))}%;background:${color}"></i></div>`:''}</div>`;
  const currentEstimate=mm===currentMonth()&&!closed?monthEndEstimate(mm):null;if(currentEstimate){S.lastMonthEndEstimate=S.lastMonthEndEstimate||{};S.lastMonthEndEstimate[mm]=currentEstimate.net;}
  const netTile=`<div class="card net-income-tile"><div class="tile-title">${future?'PROJECTED NET INCOME':'NET INCOME'}</div><div class="metric" style="color:${netColor(future?tb.net:ta.net)}">${$(future?tb.net:ta.net)}</div>${currentEstimate?`<div class="net-estimate"><span>Est. month-end</span><b>${$(currentEstimate.net)}</b></div>`:`<div class="tile-small">${future?'Budget projection':closed?'Closed actual':'Actual so far'}</div>`}</div>`;
- const cf=cashFlow(mm),basis=future?'PROJECTED':'',summary=`<div class="tiles">${tile('↙ '+basis+' INCOME',future?tb.i:ta.i,future?'Budget projection':`${tb.i?pc(ta.i/tb.i):'—'} of ${$(tb.i)} budgeted`,tb.i?ta.i/tb.i*100:0,'var(--grn)')}${tile('↗ '+basis+' EXPENSES',future?tb.exp:ta.exp,future?'Budget projection':`${tb.exp?pc(ta.exp/tb.exp):'—'} of ${$(tb.exp)} budgeted`,tb.exp?ta.exp/tb.exp*100:0,'var(--red)')}${netTile}${future?tile('PROJECTED CASH FLOW',tb.cash,'Budget-based proxy · not bank movement'):cf.coverage?tile('TOTAL CASH FLOW',cf.cash,'Observed cash-account movement · provisional'):`<div class="card"><div class="tile-title">TOTAL CASH FLOW</div><div class="metric">—</div><div class="tile-small">Insufficient bank transaction history</div></div>`}</div>`;
+ const cf=cashFlow(mm),basis=future?'PROJECTED':'',summary=`<div class="tiles">${tile('↙ '+basis+' INCOME',future?tb.i:ta.i,future?'Budget projection':`${tb.i?pc(ta.i/tb.i):'—'} of ${$(tb.i)} budgeted`,tb.i?ta.i/tb.i*100:0,'var(--grn)')}${tile('↗ '+basis+' EXPENSES',future?tb.exp:ta.exp,future?'Budget projection':`${tb.exp?pc(ta.exp/tb.exp):'—'} of ${$(tb.exp)} budgeted`,tb.exp?ta.exp/tb.exp*100:0,'var(--red)')}${netTile}${future?tile('PROJECTED CASH FLOW',tb.cash,'Budget-based proxy · not bank movement'):cf.coverage?tile('TOTAL CASH FLOW',cf.cash,escHtml(cf.note)+(cf.partial?' · Partial':'')):`<div class="card"><div class="tile-title">TOTAL CASH FLOW</div><div class="metric">—</div><div class="tile-small">${escHtml(cf.note)}</div></div>`}</div>`;
  const stamp=S.actualChangeAt?.[mm],updated=stamp&&!isNaN(Date.parse(stamp))?new Date(stamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'not yet recorded',fresh=bankFreshness();
  const freshness=`<div class="mu" style="margin:9px 4px">Bank data: ${escHtml(fresh)} · ${S.t.filter(t=>t.m===mm&&(t.rv||t.pending)).length} awaiting review · Actuals updated ${escHtml(updated)}</div>`;
  const detail=allocationCard(),parts=detail.split('<div class="analysis-body" hidden>'),allocation=analysisTile('allocation','50/30/20 Rule',parts[0],`<div class="analysis-body">${parts[1]||''}`);
@@ -312,74 +419,86 @@ function sb(i,x){if(!hasBudget(st.m)||i===tithingIndex())return;S.b[st.m]=[...B(
 function cp(){const nx=MS[MS.indexOf(st.m)+1];if(!nx)return alert('No next month is available in the loaded budget.');S.b[nx]=[...B(st.m)];save();st.m=nx;go()}
 function cpall(){const ix=MS.indexOf(st.m);if(ix<0)return;MS.slice(ix+1).forEach(m=>S.b[m]=[...B(st.m)]);save();alert('Applied '+st.m+' budget to all future months currently loaded.');go()}
 function avg3(){const ix=MS.indexOf(st.m),prev=MS.slice(Math.max(0,ix-3),ix);if(prev.length<1)return alert('No previous months are available.');S.b[st.m]=D.c.map((_,i)=>Math.round(prev.reduce((s,m)=>s+(+(S.lv[m]?tx(m,i):A(m)[i])||0),0)/prev.length*100)/100);save();go()}
-function mro(n,a){const k=n.toLowerCase();return S.rl.find(r=>k.includes(r.k)&&(r.lo===''||a>=r.lo)&&(r.hi===''||a<r.hi))}
+function mro(n,a,aid='',signed=null){const k=String(n||'').toLowerCase();return S.rl.find(r=>k.includes(String(r.k||'').toLowerCase())&&(r.lo===''||a>=r.lo)&&(r.hi===''||a<r.hi)&&(!r.accountId||r.accountId===aid)&&(!r.dest||signed===null||signed>0))}
 function mr(n,a){const r=mro(n,a);return r?r.c:-1}
 const isTr=n=>/payment|transfer|autopay|thank you|to savings|from savings|zelle to/i.test(n);
 function cat(d,ap,a){const r=mr(d,a);if(r>=0)return r;const M={restaurants:'Food',groceries:'Grocer',shopping:'Fun',gas:'Gas',entertainment:'Fun',transportation:'Auto',health:'Medical',travel:'Travel',services:'Personal',other:'Misc',food:'Food'};return ci(M[(ap||'').toLowerCase()]||'zzz')}
 const opts=(sel)=>D.c.map((c,i)=>'fadis'.includes(c[1])?`<option value=${i} ${i==sel?'selected':''}>${c[0]}</option>`:'').join('')
-const transferRows=[['','Unassigned'],[61,'401(k)'],[62,'SoFi investments'],[66,'SoFi checking'],[67,'Available savings'],[68,'Emergency savings'],[69,'Baby fund'],[70,'House fund'],[71,'CPA fund'],[72,'Other accounts']];
-function setTransferDestination(j,v){const t=S.t[j];t.dest=v?+v:null;t.tr=1;if(!v)t.countTransfer=false;save();go()}
+const transferRows=[['','Select destination'],['taxable','SoFi Investments (taxable)'],['ira','SoFi Roth IRA'],['cc:85','Credit Card Payment'],[66,'SoFi checking'],[67,'Available savings'],[68,'Emergency savings'],[69,'Baby fund'],[70,'House fund'],[71,'CPA fund'],[72,'Other accounts']];
+function setTransferDestination(j,v){const t=S.t[j];if(!t||S.cm?.[t.m])return;t.dest=v||null;t.tr=1;t.countTransfer=savingsCategoryForDestination(v)>=0;const c=savingsCategoryForDestination(v);if(c>=0)t.c=c;actualTouched(t.m);save();go()}
 function setDraftCategory(j,value){const t=S.t[j];if(!t)return;st.drafts[j]={...(st.drafts[j]||{}),c:value==='transfer'?t.c:Number(value),tr:value==='transfer'};go()}
-function setDraftDestination(j,value){st.drafts[j]={...(st.drafts[j]||{}),dest:value?Number(value):null,tr:true};go()}
-function confirmT(j){const t=S.t[j];if(t&&S.cm?.[t.m])return alert('Closed months are locked.');if(!t||t.pending)return alert('Pending transactions must post before they can be reviewed.');const d=st.drafts[j]||{};const old=t.c,wasConfirmed=!t.rv,wasTransfer=!!t.tr,wasCount=!!t.countTransfer,wasDest=t.dest;
+function setDraftDestination(j,value){st.drafts[j]={...(st.drafts[j]||{}),dest:value||null,tr:true};go()}
+function confirmT(j){const t=S.t[j];if(t&&S.cm?.[t.m])return alert('Closed months are locked.');if(!t||t.pending)return alert('Pending transactions must post before review.');
+ const d=st.drafts[j]||{},old=JSON.stringify([t.c,t.tr,t.dest,t.countTransfer,t.rv]);
  if(d.tr!==undefined)t.tr=d.tr?1:0;
  if(!t.tr){t.c=d.c!==undefined?d.c:t.c;t.dest=null;t.countTransfer=false;}
- else{t.dest=d.dest!==undefined?d.dest:t.dest;t.countTransfer=d.countTransfer!==undefined?!!d.countTransfer:!!t.countTransfer;if(t.countTransfer&&d.c!==undefined)t.c=d.c;}
- if(t.tr&&t.countTransfer&&D.c[t.c]?.[1]!=='s')return alert('Choose a savings or investment budget category before counting this transfer.');t.rv=0;delete st.drafts[j];if(!wasConfirmed||old!==t.c||wasTransfer!==!!t.tr||wasCount!==!!t.countTransfer||wasDest!==t.dest)actualTouched(t.m);
+ else {t.dest=d.dest!==undefined?d.dest:t.dest;const c=savingsCategoryForDestination(t.dest);
+  t.countTransfer=c>=0&&t.signed>0;
+  if(c>=0)t.c=c;
+  if(!t.dest)return alert('Choose a transfer destination.');
+ }
+ t.rv=0;delete st.drafts[j];if(old!==JSON.stringify([t.c,t.tr,t.dest,t.countTransfer,t.rv]))actualTouched(t.m);
  if(!t.tr){const k=tidy(t.n).toLowerCase();S.fx=S.fx||{};const f=S.fx[k];S.fx[k]=f&&f.c===t.c?{c:t.c,n:f.n+1}:{c:t.c,n:1};if(S.fx[k].n>=2&&mr(t.n,t.a)!==t.c)st.sug={k,c:t.c};}
- save();go();
-}
+ save();go();}
 function showTransactionMemo(j){const t=S.t[j];if(!t)return;openPanel('Full transaction memo',`<div class="card" style="white-space:pre-wrap;overflow-wrap:anywhere">${escHtml(t.n||'No merchant text recorded')}</div><p class="mu">${escHtml(t.ac||'Manual')} · ${escHtml(t.d||'')}</p>`)}
 function tcard(t){
  const j=S.t.indexOf(t),draft=st.drafts[j]||{},tr=draft.tr!==undefined?draft.tr:!!t.tr,cat=draft.c!==undefined?draft.c:t.c,dest=draft.dest!==undefined?draft.dest:t.dest;
  const optsFor=D.c.map((c,i)=>`<option value="${i}" ${!tr&&i===cat?'selected':''}>${escHtml(c[0])}</option>`).join('');
- return `<div class="card" style="${t.pending?'opacity:.65':''}"><div class="action-top"><div style="min-width:0;flex:1">${st.sel?`<input type="checkbox" ${st.ss.includes(j)?'checked':''} onchange="tg(${j})" style="float:left;margin:2px 8px 0 0">`:''}<div class="mu">${dfmt(t.d)} · ${escHtml(t.ac||'Manual')}</div><button class="memo-expand" onclick="showTransactionMemo(${j})" title="See full transaction memo">${escHtml(tidy(t.n))}</button>${t.tr?' <span class="source-tag">Transfer</span>':''}${t.pending?' <span class="source-tag">Pending</span>':''}${!t.rv?' <span class="source-tag">OK</span>':''}</div><b style="font-size:18px">${D.c[t.c]?.[1]==='i'?'+'+$2(t.a):D.c[t.c]?.[1]==='s'||t.tr?$2(t.a):'-'+$2(t.a)}</b></div>
+ return `<div class="card" style="${t.pending?'opacity:.65':''}"><div class="action-top"><div style="min-width:0;flex:1">${st.sel?`<input type="checkbox" ${st.ss.includes(j)?'checked':''} onchange="tg(${j})" style="float:left;margin:2px 8px 0 0">`:''}<div class="mu">${dfmt(t.d)} · ${escHtml(t.ac||'Manual')}</div><button class="memo-expand" onclick="showTransactionMemo(${j})" title="See full transaction memo">${escHtml(tidy(t.n))}</button>${t.tr?' <span class="source-tag">Transfer</span>':''}${t.pending?' <span class="source-tag">Pending</span>':''}${!t.rv?' <span class="source-tag">OK</span>':''}</div><b style="font-size:18px">${t.signed!=null?(t.signed<0?'+':'−')+$2(t.a):(D.c[t.c]?.[1]==='i'?'+':'−')+$2(t.a)}</b></div>
  <select style="width:100%;margin-top:9px" onchange="setDraftCategory(${j},this.value)" ${t.pending?'disabled':''}><option value="transfer" ${tr?'selected':''}>Transfer (not spending)</option>${D.c.map((c,i)=>`<option value="${i}" ${!tr&&i===cat?'selected':''}>${escHtml(c[0])}</option>`).join('')}</select>
- ${tr?`<div class="setting-label">Transfer destination</div><select style="width:100%" onchange="setDraftDestination(${j},this.value)" ${t.pending?'disabled':''}>${transferRows.map(([r,n])=>`<option value="${r}" ${String(dest||'')===String(r)?'selected':''}>${escHtml(n)}</option>`).join('')}</select>${dest?`<div class="row"><span class="mu">Count outgoing transfer toward savings budget</span><input type="checkbox" ${draft.countTransfer!==undefined?draft.countTransfer?'checked':'':t.countTransfer?'checked':''} onchange="st.drafts[${j}]={...(st.drafts[${j}]||{}),countTransfer:this.checked};go()"></div><select style="width:100%" onchange="st.drafts[${j}]={...(st.drafts[${j}]||{}),c:+this.value};go()"><option value="">Savings category</option>${D.c.map((c,i)=>c[1]==='s'?`<option value="${i}" ${cat===i?'selected':''}>${escHtml(c[0])}</option>`:'').join('')}</select>`:''}`:''}
+ ${tr?`<div class="setting-label">Transfer destination</div><select style="width:100%" onchange="setDraftDestination(${j},this.value)" ${t.pending?'disabled':''}>${[...transferRows,...effectiveAccounts().filter(a=>accountKind(a)==='Credit Cards').map(a=>['cc:'+a.id,'Payment → '+a.displayName])].map(([r,n])=>`<option value="${r}" ${String(dest||'')===String(r)?'selected':''}>${escHtml(n)}</option>`).join('')}</select>${dest?`<div class="row"><span class="mu">Count outgoing transfer toward savings budget</span><input type="checkbox" ${draft.countTransfer!==undefined?draft.countTransfer?'checked':'':t.countTransfer?'checked':''} onchange="st.drafts[${j}]={...(st.drafts[${j}]||{}),countTransfer:this.checked};go()"></div><select style="width:100%" onchange="st.drafts[${j}]={...(st.drafts[${j}]||{}),c:+this.value};go()"><option value="">Savings category</option>${D.c.map((c,i)=>c[1]==='s'?`<option value="${i}" ${cat===i?'selected':''}>${escHtml(c[0])}</option>`:'').join('')}</select>`:''}`:''}
  <div class="review-actions"><button class="p" onclick="confirmT(${j})" ${t.pending?'disabled':''}>OK</button><button onclick="st.sp=${j};st.spl=[{c:${t.c},a:${t.a}}];go()" ${t.pending?'disabled':''}>Split</button><button style="color:var(--red)" onclick="dl(${j})">Delete</button></div></div>`;
 }
 function ssheet(){const t=S.t[st.sp],tot=st.spl.reduce((s,x)=>s+(+x.a||0),0),left=Math.round((t.a-tot)*100)/100;return `<div class=card><b>Split ${tidy(t.n)}</b><div class=mu>${$2(t.a)} total</div>${st.spl.map((x,i)=>`<div class=row><select style="flex:1" onchange="st.spl[${i}].c=+this.value">${opts(x.c)}</select><input class=n inputmode=decimal value="${x.a}" onchange="st.spl[${i}].a=parseFloat(this.value)||0;go()"></div>`).join('')}<div class=row><span>Left to assign</span><b style="color:${Math.abs(left)<.01?'var(--grn)':'var(--red)'}">${$2(left)}</b></div><div class=g3><button onclick="st.spl.push({c:${t.c},a:${left>0?left:0}});go()">Add line</button><button class=p onclick="ssave()">Save</button><button onclick="st.sp=null;go()">Cancel</button></div></div>`}
-function ssave(){const t=S.t[st.sp];if(!t||S.cm?.[t.m])return alert('Closed months are locked.');const wasConfirmed=!t.rv,tot=st.spl.reduce((s,x)=>s+(+x.a||0),0);if(Math.abs(tot-t.a)>=.01)return alert('Amounts must add up to '+$2(t.a));const[f,...r]=st.spl;S.t.push(...r.map(x=>({...t,a:x.a,c:x.c,sp:1,rv:1,pid:undefined})));t.a=f.a;t.c=f.c;t.sp=1;t.rv=1;if(wasConfirmed)actualTouched(t.m);st.sp=null;save();go()}
+function ssave(){const t=S.t[st.sp];if(!t||S.cm?.[t.m])return alert('Closed months are locked.');const wasConfirmed=!t.rv,tot=st.spl.reduce((s,x)=>s+(+x.a||0),0);if(Math.abs(tot-t.a)>=.01)return alert('Amounts must add up to '+$2(t.a));const[f,...r]=st.spl;S.t.push(...r.map(x=>({...t,a:+x.a,c:x.c,signed:Math.sign(t.signed??t.a)*(+x.a),sp:1,rv:wasConfirmed?0:1,pid:undefined,pairedWith:null,mirrorTransfer:false})));t.a=f.a;t.c=f.c;t.signed=Math.sign(t.signed??t.a)*f.a;t.sp=1;t.rv=wasConfirmed?0:1;if(wasConfirmed)actualTouched(t.m);st.sp=null;save();go()}
 function tg(j){const i=st.ss.indexOf(j);i<0?st.ss.push(j):st.ss.splice(i,1);const e=document.getElementById('bn');if(e)e.textContent=st.ss.length}
 function bulk(a){if(!st.ss.length)return;if(a=='d')[...st.ss].sort((x,y)=>y-x).forEach(j=>S.t.splice(j,1));else st.ss.forEach(j=>{if(!S.t[j].rv)actualTouched(S.t[j].m);S.t[j].c=+bk.value;S.t[j].tr=0;S.t[j].rv=1});st.ss=[];st.sel=0;save();go()}
 function mk2(a){S.rl.unshift({k:st.sug.k,lo:'',hi:'',c:st.sug.c,ok:a});st.sug=null;save();go()}
+function changeTxnTab(tab){st.v=tab;st.txnView=tab==='done'?'account':'date';st.txnGroupsOpen={};go()}
+function txnListing(rows){if(st.txnView!=='account')return rows.map(tcard).join('');
+ const by={};rows.forEach(t=>{const id=t.aid||t.ac||'manual',name=t.ac||effectiveAccounts().find(a=>a.id===id)?.displayName||'Manual';if(!by[id])by[id]={id,name,rows:[]};by[id].rows.push(t)});
+ return Object.values(by).sort((a,b)=>a.name.localeCompare(b.name)).map(x=>{const open=!!st.txnGroupsOpen?.[x.id];
+ return `<details class="txn-account" ${open?'open':''}><summary onclick="st.txnGroupsOpen=st.txnGroupsOpen||{};st.txnGroupsOpen[decodeURIComponent('${encodeURIComponent(x.id)}')]=!this.parentNode.open"><b>${escHtml(x.name)}</b><span class="mu">${x.rows.length} transactions</span></summary>${x.rows.map(tcard).join('')}</details>`}).join('')}
 function txn(){
  const mm=st.m,q=(st.q||'').toLowerCase(),nr=S.t.filter(t=>t.m===mm&&(!!t.rv||t.pending)&&!t.ig).length,accs=[...new Set(S.t.filter(t=>t.m===mm).map(t=>t.ac).filter(Boolean))],state=st.v;
- const B_=(k,l)=>`<button class="${st.v===k?'on':''}" onclick="st.v='${k}';go()">${l}</button>`;
+ const B_=(k,l)=>`<button class="${st.v===k?'on':''}" onclick="changeTxnTab('${k}')">${l}</button>`;
  const hd=`<div class="seg">${B_('rev','Review ('+nr+')')}${B_('done','Reviewed')}${B_('rules','Rules')}</div>${st.v==='rev'&&S.t.some(t=>t.m===mm&&t.transferSuggestion)?`<div class="card"><b>Possible transfers</b><div class="mu">Matched by equal and opposite Plaid amounts, separate accounts and nearby dates. Confirm each pair before classification. Both sides stay in the transaction audit trail; the incoming mirror is excluded from Actuals.</div>${S.t.filter(t=>t.m===mm&&t.transferSuggestion&&t.signed>0).map(t=>`<div class="row"><span>${escHtml(t.n)} · ${$2(t.a)}</span><button class="smallbtn" onclick="applyTransferPair('${encodeURIComponent(t.pid)}')">Confirm pair</button></div>`).join('')}</div>`:''}`;
- if(st.v==='rules')return hd+`<div class="card"><b>New rule</b><div class="g" style="margin-top:8px"><input id="rk" placeholder="Merchant contains"><div class="two-col"><input id="rlo" placeholder="min $" inputmode="decimal"><input id="rhi" placeholder="under $" inputmode="decimal"></div><div class="two-col"><select id="rcat">${opts(-1)}</select><button class="p" onclick="addR()">Add rule</button></div></div><p class="mu">Trusted rules automatically review matching transactions; other rules only suggest categories.</p></div>`+S.rl.map((r,j)=>`<div class="card"><b>${escHtml(r.k)}</b><div class="mu">${escHtml(D.c[r.c]?.[0]||'Category')} · ${r.ok?'Trusted':'Approval required'}</div><div class="g3"><button onclick="mv(${j})">Move up</button><button onclick="S.rl.splice(${j},1);save();go()">Delete</button><button onclick="S.rl[${j}].ok=!S.rl[${j}].ok;save();go()">${r.ok?'Untrust':'Trust'}</button></div></div>`).join('')+`<button style="width:100%" onclick="ap()">Apply rules to unreviewed items</button>`;
+ if(st.v==='rules')return hd+`<div class="card"><b>New rule</b><div class="g" style="margin-top:8px"><input id="rk" placeholder="Merchant contains"><div class="two-col"><input id="rlo" placeholder="min $" inputmode="decimal"><input id="rhi" placeholder="under $" inputmode="decimal"></div><div class="two-col"><select id="rcat">${opts(-1)}</select><button class="p" onclick="addR()">Add rule</button></div><div class="two-col"><select id="rdest"><option value="">Ordinary category (above)</option>${transferRows.filter(x=>x[0]).map(([id,label])=>`<option value="${id}">Transfer → ${escHtml(label)}</option>`).join('')}</select><select id="raccount"><option value="">All source accounts</option>${effectiveAccounts().map(a=>`<option value="${escAttr(a.id)}">${escHtml(a.displayName)}</option>`).join('')}</select></div></div><p class="mu">Transfer rules use direction and account where possible. New transfer rules require review until trusted.</p></div>`+S.rl.map((r,j)=>`<div class="card"><b>${escHtml(r.k)}</b><div class="mu">${escHtml(r.dest?'Transfer → '+transferRows.find(x=>String(x[0])===String(r.dest))?.[1]:D.c[r.c]?.[0]||'Category')} · ${r.ok?'Trusted':'Approval required'}</div><div class="g3"><button onclick="mv(${j})">Move up</button><button onclick="S.rl.splice(${j},1);save();go()">Delete</button><button onclick="S.rl[${j}].ok=!S.rl[${j}].ok;save();go()">${r.ok?'Untrust':'Trust'}</button></div></div>`).join('')+`<button style="width:100%" onclick="ap()">Apply rules to unreviewed items</button>`;
  const L=S.t.filter(t=>t.m===mm&&(st.v==='rev'?(!!t.rv||t.pending):(!t.rv&&!t.pending))&&(st.fa==='all'||t.ac===st.fa)&&(st.fc==='all'||String(t.c)===st.fc)&&(!q||(t.n+' '+(t.ac||'')+' '+t.a+' '+(D.c[t.c]?.[0]||'')+' '+t.d).toLowerCase().includes(q)));
+ L.sort((a,b)=>(b.d||'').localeCompare(a.d||'')||String(b.pid||'').localeCompare(String(a.pid||'')));
  const errors=(IB||[]).filter(x=>x.t==='error');
  const sync=`<div class="card"><div class="action-top"><b>Bank imports</b><button class="p smallbtn" onclick="refresh()">↻ Refresh from banks</button></div><div class="action-top" style="margin-top:9px"><span class="mu">Import Apple Card transactions</span><button class="smallbtn" onclick="document.getElementById('csvf').click()">Import Apple Card CSV</button><input id="csvf" type="file" accept=".csv" hidden onchange="if(this.files[0])imp(this.files[0])"></div>${errors.length?`<div class="warn r">Reconnect required for ${errors.map(e=>escHtml(e.n||'Account')).join(', ')}. Check Settings.</div>`:''}<div class="mu" style="margin-top:7px">Only transactions confirmed with OK or trusted rules affect open-month Actuals.</div></div>`;
- const live=`<div class="card"><div class="action-top"><span><b>${escHtml(mm)} actuals</b><br><span class="mu">${S.cm?.[mm]?'Closed in spreadsheet':'Live from reviewed transactions'}</span></span><span class="source-tag">${S.cm?.[mm]?'Closed':'Open'}</span></div></div>`;
+ const live='';
  const add=`<div class="card quick-add"><div class="action-top"><b style="font-size:17px">＋ Quick-add transaction</b><button class="smallbtn" onclick="st.quickOpen=!st.quickOpen;go()">${st.quickOpen?'− Collapse':'+ Expand'}</button></div>${st.quickOpen?`<div class="compact-quick" style="margin-top:11px"><input id="ta" class="wide" placeholder="Amount $" inputmode="decimal" style="font-size:22px;font-weight:800"><input id="td" type="date" value="${dk(new Date())}"><select id="tc">${opts(ci('Misc'))}<option value="401k">401(k) Contribution</option></select><input id="tm" class="wide" placeholder="Merchant (Venmo, Amazon, etc.)"><button class="p wide" onclick="addT()">Add Transaction</button></div>`:'<div class="mu" style="margin-top:5px">Enter a transaction in seconds.</div>'}</div>`;
  const sug=st.sug?`<div class="card"><b>Create rule for ${escHtml(st.sug.k)}?</b><div class="mu">You classified this merchant twice.</div><div class="g3"><button onclick="mk2(0)">Create</button><button class="p" onclick="mk2(1)">Trust</button><button onclick="st.sug=null;go()">Dismiss</button></div></div>`:'';
  const filters=`<div class="card"><input id="qs" placeholder="Search merchant, account, amount, or date" value="${escAttr(st.q)}" style="width:100%" onchange="st.q=this.value;go()"><div class="two-col" style="margin-top:9px"><select onchange="st.fa=this.value;go()"><option value="all">All accounts</option>${accs.map(a=>`<option ${a===st.fa?'selected':''} value="${escAttr(a)}">${escHtml(acf(a))}</option>`).join('')}</select><select onchange="st.fc=this.value;go()"><option value="all">All categories</option>${D.c.map((c,i)=>`<option value="${i}" ${st.fc===String(i)?'selected':''}>${escHtml(c[0])}</option>`).join('')}</select></div><div class="action-top" style="margin-top:9px"><span class="mu">${L.length} shown</span><button class="smallbtn" onclick="st.sel=!st.sel;st.ss=[];go()">${st.sel?'Done selecting':'Select multiple'}</button></div></div>`;
  const bar=st.sel?`<div class="card sticky"><div class="action-top"><b id="bn">${st.ss.length} selected</b><select id="bk">${opts(-1)}</select></div><div class="review-actions"><button class="p" onclick="bulk('c')">Set category</button><button onclick="bulk('d')">Delete</button></div><div class="mu">Bulk category changes require individual OK confirmation.</div></div>`:'';
- return hd+sync+live+add+retirementLedger(mm)+sug+(st.sp!=null?ssheet():'')+filters+bar+`<div id="result-list">${L.map(tcard).join('')||'<div class="card mu">No transactions in this view.</div>'}</div>`;
+ const chooser=`<div class="txn-sort row"><b>View</b><div class="seg"><button class="${st.txnView==='date'?'on':''}" onclick="st.txnView='date';go()">By date</button><button class="${st.txnView==='account'?'on':''}" onclick="st.txnView='account';go()">By account</button></div></div>`;
+ return hd+sync+live+add+retirementLedger(mm)+sug+(st.sp!=null?ssheet():'')+filters+bar+chooser+`<div id="result-list">${txnListing(L)||'<div class="card mu">No transactions in this view.</div>'}</div>`;
 }
-function addR(){if(!rk.value)return;S.rl.push({k:rk.value.toLowerCase(),lo:rlo.value===''?'':+rlo.value,hi:rhi.value===''?'':+rhi.value,c:+rcat.value});save();go()}
+function addR(){if(!rk.value.trim())return;const dest=document.getElementById('rdest')?.value||'',cat=dest?savingsCategoryForDestination(dest):+rcat.value;
+ S.rl.push({k:rk.value.trim().toLowerCase(),lo:rlo.value===''?'':+rlo.value,hi:rhi.value===''?'':+rhi.value,c:cat>=0?cat:+rcat.value,dest:dest||null,accountId:document.getElementById('raccount')?.value||'',ok:!dest});save();go()}
 function mv(j){if(j>0){[S.rl[j-1],S.rl[j]]=[S.rl[j],S.rl[j-1]];save();go()}}
-function ap(){let k=0;S.t.forEach(t=>{if(t.cl||S.cm?.[t.m]||t.sp)return;const rule=mro(t.n,t.a),c=rule?.c;if(c>=0&&(c!==t.c||rule.ok&&!t.rv)){t.c=c;t.tr=0;if(rule.ok){t.rv=0;actualTouched(t.m);}k++}});save();alert(k+' updated');go()}
+function ap(){let k=0;S.t.forEach(t=>{if(t.cl||S.cm?.[t.m]||t.sp||t.pairedWith)return;const rule=mro(t.n,t.a,t.aid,t.signed);if(!rule)return;
+ if(rule.dest&&t.signed>0){t.tr=1;t.dest=rule.dest;t.countTransfer=savingsCategoryForDestination(rule.dest)>=0;const c=savingsCategoryForDestination(rule.dest);if(c>=0)t.c=c;
+ }else if(!rule.dest&&rule.c>=0){t.c=rule.c;t.tr=0;}else return;
+ if(rule.ok){t.rv=0;actualTouched(t.m)}k++});if(k)save();alert(k+' transactions updated');go()}
 function quickMerchant(n){const e=document.getElementById('tm');if(e)e.value=n}
 function quickCat(i){const e=document.getElementById('tc');if(e)e.value=String(i)}
-function addT(){
- const raw=document.getElementById('ta')?.value||'',a=Math.abs(parseFloat(raw));if(!Number.isFinite(a)||a<=0)return alert('Enter a valid amount first.');
- const date=document.getElementById('td')?.value||dk(new Date()),merchant=(document.getElementById('tm')?.value||'').trim()||'Manual';const selected=document.getElementById('tc')?.value;
- const mm=mk(date);if(S.cm?.[mm])return alert('This month is closed. Retirement entries and transactions cannot be added to it.');
- if(selected==='401k'){
-  // Employee deductions and employer contributions are outside cash-account movements and P&L.
-  S.retirementEvents=S.retirementEvents||[];S.retirementEvents.push({id:'401k:'+Date.now()+':'+Math.random().toString(36).slice(2,7),d:date,m:mm,a,n:merchant,type:'401k',created:timestampNow()});
- }else{
-  const c=Number(selected);if(!Number.isInteger(c)||!D.c[c])return alert('Choose an expense or income category.');
-  S.t.push({d:date,m:mm,n:merchant,a,c,rv:0,tr:0,pending:false});actualTouched(mm);
+function addT(){const raw=document.getElementById('ta')?.value||'',numeric=parseFloat(raw),a=Math.abs(numeric);if(!Number.isFinite(a)||a<=0)return alert('Enter a valid amount.');
+ const date=document.getElementById('td')?.value||dk(new Date()),merchant=(document.getElementById('tm')?.value||'').trim()||'Manual';const selected=document.getElementById('tc')?.value,mm=mk(date);
+ if(S.cm?.[mm])return alert('This month is closed.');
+ if(selected==='401k'){S.retirementEvents=S.retirementEvents||[];S.retirementEvents.push({id:'401k:'+Date.now(),d:date,m:mm,a,n:merchant,type:'401k',created:timestampNow()});}
+ else {const c=Number(selected);if(!Number.isInteger(c)||!D.c[c])return alert('Choose a valid category.');
+  // Quick-add positive amount = payment/spend; negative amount = refund/credit. Income reverses this.
+  const type=D.c[c][1],signed=(type==='i'?-1:1)*numeric;
+  S.t.push({d:date,m:mm,n:merchant,a,c,rv:0,tr:0,signed,pending:false});actualTouched(mm);
  }
- save();go();
-}
+ save();go();}
 function editRetirement(id){const e=(S.retirementEvents||[]).find(x=>x.id===decodeURIComponent(id));if(!e)return;openPanel('Edit 401(k) contribution',`<div class="field"><label>Date</label><input id="rtDate" type="date" value="${escAttr(e.d)}"></div><div class="field"><label>Amount · include employee + employer contributions</label><input id="rtAmount" type="number" step=".01" min="0.01" value="${e.a}"></div><div class="field"><label>Note</label><input id="rtNote" value="${escAttr(e.n||'')}"></div><button class="p" style="width:100%" onclick="saveRetirement('${encodeURIComponent(e.id)}')">Save contribution</button><button style="width:100%;color:var(--red);margin-top:7px" onclick="deleteRetirement('${encodeURIComponent(e.id)}')">Delete entry</button>`)}
 function saveRetirement(id){const e=(S.retirementEvents||[]).find(x=>x.id===decodeURIComponent(id)),a=+document.getElementById('rtAmount')?.value,d=document.getElementById('rtDate')?.value;if(!e||!d||!Number.isFinite(a)||a<=0)return alert('Enter a valid date and amount.');const mm=mk(d);if(S.cm?.[e.m]||S.cm?.[mm])return alert('Closed month contributions are locked.');e.d=d;e.m=mm;e.a=a;e.n=document.getElementById('rtNote')?.value||'';closePanel();save();go()}
 function deleteRetirement(id){const e=(S.retirementEvents||[]).find(x=>x.id===decodeURIComponent(id));if(!e||S.cm?.[e.m])return alert('Closed month contributions are locked.');if(!confirm('Delete this 401(k) tracking entry?'))return;S.retirementEvents=S.retirementEvents.filter(x=>x!==e);closePanel();save();go()}
-function retirementLedger(mm){const rows=(S.retirementEvents||[]).filter(x=>x.m===mm);return rows.length?`<div class="card"><b>401(k) contribution tracking</b><div class="mu">Manual entries are not income, expenses, cash flow or balances.</div>${rows.map(x=>`<div class="row"><span>${escHtml(x.d)} · ${escHtml(x.n||'401(k) contribution')}</span><span><b>${$2(x.a)}</b> <button class="smallbtn" onclick="editRetirement('${encodeURIComponent(x.id)}')">Edit</button></span></div>`).join('')}</div>`:''}
+function retirementLedger(mm){const rows=(S.retirementEvents||[]).filter(x=>x.m===mm);return rows.length?`<details class="card" ${st.retirementLedgerOpen?'open':''}><summary onclick="st.retirementLedgerOpen=!this.parentNode.open" style="cursor:pointer"><b>401(k) contribution tracking</b> <span class="mu">· ${rows.length} entries · ${$2(rows.reduce((a,x)=>a+x.a,0))}</span></summary><div class="mu" style="margin:10px 0">Outside income, expenses, and bank cash flow.</div>${rows.map(x=>`<div class="row"><span>${escHtml(x.d)} · ${escHtml(x.n||'401(k) contribution')}</span><span><b>${$2(x.a)}</b> <button class="smallbtn" onclick="editRetirement('${encodeURIComponent(x.id)}')">Edit</button></span></div>`).join('')}</details>`:''}
 function rc(j,v){setDraftCategory(j,+v<0?'transfer':String(v))}
 function dl(j){const t=S.t[j];if(t&&S.cm?.[t.m])return alert('Closed months are locked.');if(!confirm('Delete this transaction?'))return;if(t&&!t.rv)actualTouched(t.m);S.t.splice(j,1);st.drafts={};save();go()}
 function sp(){}
@@ -389,7 +508,7 @@ R.slice(1).forEach(r=>{const a=parseFloat(r[g('amount')]);if(!a||a<0||(r[g('type
 const dd=new Date(d),dk=isNaN(dd)?d:dd.toISOString().slice(0,10);if(S.t.some(t=>t.d==dk&&t.n==n&&Math.abs(t.a-a)<.005&&!t.sp))return;S.t.push({d:dk,m:mk(d),n,a,c:c<0?ci('Misc'):c,rv:mro(n,a)?.ok?0:1,tr:isTr(n)?1:0,pending:false});if(mro(n,a)?.ok)actualTouched(mk(d));k++});save();alert(k+' transactions imported');go()};rd.readAsText(file)}
 function categoryPanel(i){
  const mm=st.m,c=D.c[i],a=A(mm)[i],b=B(mm)[i],entries=S.t.filter(t=>t.m===mm&&t.c===i&&!t.rv&&!t.pending&&!t.ig&&(!t.tr||t.countTransfer));
- openPanel(c[0],`<div class="row"><span>Reviewed actual</span><b>${$2(a)}</b></div><div class="row"><span>Budget</span><b>${$2(b)}</b></div><div class="sec">Transactions</div>${entries.sort((x,y)=>y.d.localeCompare(x.d)).map(t=>`<div class="row"><span><b>${escHtml(tidy(t.n))}</b><br><span class="mu">${escHtml(t.d)} · ${escHtml(t.ac||'Manual')}</span></span><b>${$2(t.a)}</b></div>`).join('')||'<p class="mu">No matching reviewed transaction details in app history. Older spreadsheet actuals may not have individual transaction records.</p>'}`);
+ openPanel(c[0],`<div class="row"><span>Reviewed actual</span><b>${$2(a)}</b></div><div class="row"><span>Budget</span><b>${$2(b)}</b></div><div class="sec">Transactions</div>${entries.sort((x,y)=>y.d.localeCompare(x.d)).map(t=>`<div class="row"><span><b>${escHtml(tidy(t.n))}</b><br><span class="mu">${escHtml(t.d)} · ${escHtml(t.ac||'Manual')}</span></span><b>${$2(t.tr?savingsEffect(t,i):signedCategoryAmount(t))}</b></div>`).join('')||'<p class="mu">No matching reviewed transaction details in app history. Older spreadsheet actuals may not have individual transaction records.</p>'}`);
 }
 function actualVarianceColor(v){const x=Math.min(1,Math.abs(v)/2);if(x<.005)return 'var(--tx)';return `hsl(${v>0?6:145},${Math.round(18+48*x)}%,${Math.round(46+6*(1-x))}%)`}
 function sortWorst(r){if(!r.b)return r.a>0&&r.c[1]!=='i'?2:0;return r.c[1]==='i'||r.c[1]==='s'?(r.b-r.a)/r.b:(r.a-r.b)/r.b}
@@ -411,13 +530,15 @@ function fc(){const x=st.x;return `<div class=card><b>What if I pay/save more?</
 ${nwc()}`}
 function netWorthSeries(){return (D.nwm||[]).map(x=>[...x])}
 function nwv(){const series=netWorthSeries(),months=selectedChartMonths('worth'),data=months.map(m=>series.find(x=>x[0]===m)||[m,null,'Unknown']);
- const values=data.map(x=>x[1]==null?NaN:+x[1]),finite=values.filter(Number.isFinite),max=Math.max(1,...finite),min=Math.min(0,...finite),X=i=>35+i*260/Math.max(1,data.length-1),Y=v=>113-(v-min)/(max-min||1)*91;
- let svg=`<svg viewBox="0 0 320 134" role="img" aria-label="Net worth history and projections" style="width:100%">`;
+ const values=data.map(x=>x[1]==null?NaN:+x[1]),finite=values.filter(Number.isFinite);if(!finite.length)return '<p class="mu">No Net Worth snapshots are available for these months.</p>';
+ const hi=Math.max(...finite),lo=Math.min(...finite),step=Math.max(100,Math.pow(10,Math.floor(Math.log10(Math.max(1,hi-lo)/4))));const min=Math.floor((lo-step/2)/step)*step,max=Math.ceil((hi+step/2)/step)*step;
+ const X=i=>48+i*259/Math.max(1,data.length-1),Y=v=>111-(v-min)/(max-min||1)*92;
+ let svg=`<svg viewBox="0 0 320 136" role="img" aria-label="Net worth history and projections with dollar scale" style="width:100%">`;
+ for(let i=0;i<5;i++){const value=min+(max-min)*i/4,y=Y(value);svg+=`<line x1="43" x2="310" y1="${y}" y2="${y}" stroke="var(--ln)" stroke-opacity=".65"/><text x="39" y="${y+3}" text-anchor="end" font-size="8" fill="var(--mu)">${Math.abs(value)>=1000?(value/1000).toFixed(0)+'k':Math.round(value)}</text>`}
  for(let i=0;i<data.length-1;i++){if(!Number.isFinite(values[i])||!Number.isFinite(values[i+1]))continue;const forecast=isFuture(data[i+1][0]);svg+=`<line x1="${X(i)}" y1="${Y(values[i])}" x2="${X(i+1)}" y2="${Y(values[i+1])}" stroke="${forecast?'#779acc':'var(--ac)'}" stroke-width="2.5" ${forecast?'stroke-dasharray="5 4"':''}/>`}
  let ix=data.findIndex(p=>isFuture(p[0]));if(ix>0){const mid=(X(ix-1)+X(ix))/2;svg+=`<path d="M${mid} 7V115" stroke="var(--mu)" stroke-dasharray="4 4"/>`}
- data.forEach((p,i)=>{if(i%Math.max(1,Math.ceil(data.length/6))===0||i===data.length-1)svg+=`<text x="${X(i)}" y="130" text-anchor="middle" font-size="9" fill="var(--mu)">${p[0]}</text>`});svg+='</svg>';
- return svg+`<div class="networth-months">${data.map((x,i)=>{const idx=MS.indexOf(x[0]),prior=idx>0?series.find(z=>z[0]===MS[idx-1]):null,diff=prior?.[1]!=null&&x[1]!=null?x[1]-prior[1]:null;return `<div class="row"><span>${escHtml(x[0])}${isFuture(x[0])?'<span class="future">Projected</span>':''}</span><span><b>${x[1]==null?'—':$(x[1])}</b> <span class="diff" style="color:${diff==null?'var(--mu)':diff>=0?'var(--grn)':'var(--red)'}">${diff==null?'—':(diff>=0?'+':'−')+$(Math.abs(diff))}</span></span></div>`}).join('')}</div>`
-}
+ data.forEach((p,i)=>{if(i%Math.max(1,Math.ceil(data.length/6))===0||i===data.length-1)svg+=`<text x="${X(i)}" y="131" text-anchor="middle" font-size="9" fill="var(--mu)">${p[0]}</text>`});svg+='</svg>';
+ return svg+`<div class="networth-months">${data.map((x,i)=>{const idx=MS.indexOf(x[0]),prior=idx>0?series.find(z=>z[0]===MS[idx-1]):null,diff=prior?.[1]!=null&&x[1]!=null?x[1]-prior[1]:null;return `<div class="row"><span>${escHtml(x[0])}${isFuture(x[0])?'<span class="future">Projected</span>':''}</span><span><b>${x[1]==null?'—':$(x[1])}</b> <span class="diff" style="color:${diff==null?'var(--mu)':diff>=0?'var(--grn)':'var(--red)'}">${diff==null?'—':(diff>=0?'+':'−')+$(Math.abs(diff))}</span></span></div>`}).join('')}</div>`;}
 function nwc(){if(!netWorthSeries().length)return '<div class="card">Net worth timeline unavailable until the spreadsheet data loads.</div>';return `<div class="card"><b>Net worth timeline</b><div class="mu">Main Page actuals · Budget-based forecasts. Changes are compared with the immediately preceding calendar month.</div>${chartRangeSlider('worth')}<div id="netWorthLive">${nwv()}</div>${chartLegend([{name:'Net worth',color:'#4268a1'}])}</div>`}
 function G(){return D.goal.map(g=>g[0]=='House fund'?[g[0],g[1],S.g.hg,g[3]]:g)}
 function sg(k,v){S.g[k]=k=='ct'?v:parseFloat(v)||0;save();wf.innerHTML=wfv()}
@@ -427,7 +548,7 @@ const acf=a=>(a||'').replace(/\s*(\d{4})$/,' ···$1'),$2=v=>(v<0?'-$':'$')+Mat
 function wk(){
  const today=new Date(),mm=st.m,monthCurrent=mm===mk(today),anchor=monthCurrent?today:(()=>{const i=MS.indexOf(mm);const year=2000+(+mm.split('-')[1]);const mo='JanFebMarAprMayJunJulAugSepOctNovDec'.indexOf(mm.slice(0,3))/3;return new Date(year,mo+1,0)})();
  const days=[...Array(7)].map((_,k)=>{const d=new Date(anchor);d.setDate(anchor.getDate()-6+k);return d}),monthly=B(mm),allowance=D.c.reduce((total,c,i)=>'ad'.includes(c[1])?total+monthly[i]:total,0)/new Date(anchor.getFullYear(),anchor.getMonth()+1,0).getDate()*7;
- const sp=days.map(d=>S.t.filter(t=>t.d===dk(d)&&!t.rv&&!t.pending&&!t.ig&&!t.tr&&D.c[t.c]&&'ad'.includes(D.c[t.c][1])).reduce((t,x)=>t+x.a,0));const sum=sp.reduce((t,x)=>t+x,0),mx=Math.max(...sp,allowance/7,1);
+ const sp=days.map(d=>S.t.filter(t=>t.d===dk(d)&&!t.rv&&!t.pending&&!t.ig&&!t.tr&&D.c[t.c]&&'ad'.includes(D.c[t.c][1])).reduce((t,x)=>t+signedCategoryAmount(x),0));const sum=sp.reduce((t,x)=>t+x,0),mx=Math.max(...sp,allowance/7,1);
  return `<div class="card"><div class="row"><span>Last 7 days</span><b>${$(sum)}</b></div><div class="chart-bars" style="height:127px;align-items:flex-end">${days.map((d,i)=>`<button class="clickday" style="flex:1" title="${dk(d)}: ${$(sp[i])}" onclick="dayPanel('${dk(d)}')"><span style="height:96px;display:flex;align-items:end;width:100%;justify-content:center"><i style="height:${Math.max(3,Math.round(sp[i]/mx*89))}px;background:${sp[i]>allowance/7?'var(--red)':'var(--bl)'}"></i></span><span class="mu">${'SMTWTFS'[d.getDay()]}</span></button>`).join('')}</div></div>`;
 }
 function wfv(){const x=st.x,g=S.g,NM={Kelly:'Car Payment',Laine:'Debt to Laine'};
@@ -476,12 +597,12 @@ function seriesChart(series,months){const W=620,H=200,padL=42,padR=12,padT=12,pa
  for(const item of series){let history=[],future=[];item.values.forEach((v,i)=>{const point=X(i)+','+Y(v);if(!isFuture(months[i]))history.push(point);else future.push(point)});if(history.length)svg+=`<polyline fill="none" stroke="${item.color}" stroke-width="2.7" points="${history.join(' ')}"/>`;if(future.length){const previous=history.length?history[history.length-1]:null;svg+=`<polyline fill="none" stroke="${item.color}" stroke-width="2.7" stroke-dasharray="6 5" points="${[previous,...future].filter(Boolean).join(' ')}"/>`}}
  const gap=Math.max(1,Math.ceil(months.length/7));svg+=months.map((m,i)=>(i%gap===0||i===months.length-1)?`<text x="${X(i)}" y="${H-4}" text-anchor="middle" font-size="10" fill="var(--mu)">${m}</text>`:'').join('')+'</svg>';return svg;}
 function chartLegend(items){return `<div class="chart-legend">${items.map(x=>`<span><i style="background:${x.color}"></i>${escHtml(x.name)}</span>`).join('')}<span>┆ Actual / projected</span></div>`}
-function mtdValue(m,i){const rows=S.t.filter(t=>t.m===m&&!t.rv&&!t.pending&&!t.ig&&!t.tr&&t.c===i);return rows.reduce((v,t)=>v+(+t.a||0),0)}
-function completeDailyHistory(m){const all=S.t.filter(t=>t.m===m&&!t.rv&&!t.pending&&!t.ig&&!t.mirrorTransfer&&(!t.tr||t.countTransfer)),a=A(m);return all.length>0&&D.c.every((c,i)=>!['i','f','a','d'].includes(c[1])||Math.abs(all.filter(t=>t.c===i).reduce((n,t)=>n+t.a,0)-(a[i]||0))<=Math.max(5,Math.abs(a[i]||0)*.05))}
+function mtdValue(m,i){const rows=S.t.filter(t=>t.m===m&&!t.rv&&!t.pending&&!t.ig&&!t.tr&&t.c===i);return rows.reduce((v,t)=>v+signedCategoryAmount(t),0)}
+function completeDailyHistory(m){const all=S.t.filter(t=>t.m===m&&!t.rv&&!t.pending&&!t.ig&&!t.mirrorTransfer&&(!t.tr||t.countTransfer)),a=A(m);return all.length>0&&D.c.every((c,i)=>!['i','f','a','d'].includes(c[1])||Math.abs(all.filter(t=>t.c===i).reduce((n,t)=>n+(t.tr?0:signedCategoryAmount(t)),0)-(a[i]||0))<=Math.max(5,Math.abs(a[i]||0)*.05))}
 function chartCategoryValue(m,i){if(isFuture(m))return B(m)[i]||0;
  if(st.chartCompare==='mtd'&&m!==currentMonth()&&completeDailyHistory(m)){
   const date=new Date(),maxDay=new Date(2000+Number(m.slice(-2)),['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].indexOf(m.slice(0,3))+1,0).getDate(),day=Math.min(date.getDate(),maxDay);
-  return S.t.filter(t=>t.m===m&&t.c===i&&!t.rv&&!t.pending&&!t.ig&&(!t.tr||t.countTransfer)&&+String(t.d).slice(8,10)<=day).reduce((n,t)=>n+(+t.a||0),0);
+  return S.t.filter(t=>t.m===m&&t.c===i&&!t.rv&&!t.pending&&!t.ig&&(!t.tr||t.countTransfer)&&+String(t.d).slice(8,10)<=day).reduce((n,t)=>n+(t.tr?savingsEffect(t,i):signedCategoryAmount(t)),0);
  }return A(m)[i]||0}
 function incomeExpenseGraph(){const months=selectedChartMonths('income'),totals=months.map(m=>T(D.c.map((_,i)=>chartCategoryValue(m,i))));return seriesChart([{values:totals.map(t=>t.i),color:'#47a371'},{values:totals.map(t=>t.exp),color:'#e36a61'}],months)+chartLegend([{name:'Income',color:'#47a371'},{name:'Expenses',color:'#e36a61'}])}
 function incomeExpenseCard(){return `<div class="card"><b>Income and expenses</b>${chartRangeSlider('income')}<div id="incomeGraph">${incomeExpenseGraph()}</div></div>`}
@@ -519,11 +640,9 @@ function setRowMapping(id,row){const key=decodeURIComponent(id);if(row)S.rowmap[
 function bankFreshness(){const stamp=D.bankSyncAt||effectiveAccounts().filter(x=>x.updated).map(x=>x.updated).sort().at(-1);if(!stamp||isNaN(Date.parse(stamp)))return 'Last sync unknown';const age=Math.round((Date.now()-Date.parse(stamp))/3600000);return age<1?'Updated within the hour':age<24?`Updated ${age}h ago`:`Updated ${Math.floor(age/24)}d ago`}
 function dataHealthSettings(){const cash=cashFlow(st.m),unmapped=effectiveAccounts().filter(x=>!S.rowmap?.[x.id]),mismatch=reconciliationInfo(st.m).filter(x=>Math.abs(x.diff)>1),prior=MS.filter(m=>monthIndex(m)<monthIndex(currentMonth())&&!S.cm?.[m]);return `<div class="card datahealth"><b>Data Health</b><div class="row"><span>Bank freshness</span><strong>${escHtml(bankFreshness())}</strong></div><div class="row"><span>Unmapped accounts</span><strong style="color:${unmapped.length?'var(--red)':'var(--grn)'}">${unmapped.length} to review</strong></div><div class="row"><span>Reconciliation differences</span><strong>${mismatch.length} flagged</strong></div><div class="row"><span>Household cash flow</span><strong>${cash.coverage?'Provisional':'Insufficient data'}</strong></div><div class="row"><span>Previous open months</span><strong>${prior.length}</strong></div></div>`}
 function monthChecklistCard(){const mm=st.m;
- if(isFuture(mm)||S.cm?.[mm])return `<div class="card"><b>Month-end checklist</b><p class="mu">${S.cm?.[mm]?'This month is closed and locked.':'Future months cannot be closed.'}</p></div>`;
- S.monthChecks=S.monthChecks||{};const selected=S.monthChecks[mm]||{};
- const unreviewed=S.t.filter(t=>t.m===mm&&(t.rv||t.pending)).length,unmapped=effectiveAccounts().filter(a=>!S.rowmap?.[a.id]).length,diff=reconciliationInfo(mm).filter(x=>Math.abs(x.diff)>1).length;
- const items=[['review',`Transactions reviewed · ${unreviewed} pending`],['reconcile',`Account reconciliation · ${diff} differences, ${unmapped} unmapped`],['tithe',`Tithing checked · ${tithingIndex()<0?'category unavailable':$(A(mm)[tithingIndex()]||0)+' paid'}`],['retirement',`401(k) and IRA contributions checked · ${$(retirementAmounts(mm).total)}`]];
- return `<div class="card"><b>Month-end checklist · ${escHtml(mm)}</b><p class="mu">Advisory only. You can close the month even with unchecked items; previous spreadsheet months will remain locked.</p>${items.map(([key,label])=>`<label class="row" style="cursor:pointer"><span>${escHtml(label)}</span><input type="checkbox" ${selected[key]?'checked':''} onchange="setMonthCheck('${key}',this.checked)"></label>`).join('')}<button class="p" style="margin-top:10px;width:100%" onclick="closeMonth()">Close ${escHtml(mm)}</button></div>`;
+ if(isFuture(mm)||S.cm?.[mm])return `<div class="card"><b>Month-end reconciliation</b><p class="mu">${S.cm?.[mm]?'This month is closed and locked.':'Future months cannot be closed.'}</p></div>`;
+ const checks=monthCloseStatus(mm);
+ return `<div class="card"><div class="action-top"><b>Month-end reconciliation · ${escHtml(mm)}</b><span class="mu">${checks.checks.length-checks.attention.length}/${checks.checks.length} checked</span></div><p class="mu">Verified steps check themselves automatically. Exceptions remain visible and require acknowledgment. Historical balance values still need month-end confirmation.</p>${monthStatusHtml(checks)}<button class="p" style="margin-top:12px;width:100%" onclick="closeMonth()">Review balances &amp; close ${escHtml(mm)}</button></div>`;
 }
 function setMonthCheck(key,value){S.monthChecks=S.monthChecks||{};S.monthChecks[st.m]=S.monthChecks[st.m]||{};S.monthChecks[st.m][key]=!!value;save();}
 function settings(){
@@ -537,7 +656,7 @@ function settings(){
  ${dashOrderSettings()}
  ${dataHealthSettings()}
  ${monthChecklistCard()}
- <div class="card"><b>Retirement tracking</b><p class="mu">Quick Add → 401(k) Contribution stores payroll deductions and employer matching without changing financial totals. IRA bank transactions are counted only when their merchant text includes this phrase; enter a unique phrase that actually appears on your bank statement (for example, IRA or Roth). Bank transactions must be reviewed.</p><div class="row"><label for="iraKeyword">IRA transaction phrase</label><input id="iraKeyword" value="${escAttr(S.iraKeyword||'IRA')}" style="max-width:160px" onchange="S.iraKeyword=this.value.trim();save();go()"></div><div class="mu">Avoid generic phrases such as “transfer” or “investment,” which might include taxable deposits. This setting does not recategorize or change bank transactions.</div></div>
+
  <div class="card"><b>Projection accuracy</b><p class="mu">Forecasts are estimates, not recorded income. When a month closes, the last stored estimate can be compared with its actual net income.</p>${Object.entries(S.projectionAudit||{}).slice(-4).map(([mon,x])=>`<div class="row"><span>${escHtml(mon)}</span><span>${x.forecast==null?'No prior estimate':$(x.actual-x.forecast)+' variance'}</span></div>`).join('')||'<div class="mu">Comparison history begins with months closed in v8.</div>'}</div>
  <div class="card"><b>Budgy privacy</b><p class="mu">Budgy sends the selected month’s category budgets, Actuals, account names/balances, and subscriptions to Google Gemini only when you send a chat question. Suggestions shown on each tab are calculated locally without AI.</p></div>
  <div class="card"><b>Account mappings</b><p class="mu">Add, rename, reconcile, and map linked or manual accounts from Actuals → Accounts &amp; Balances. Changes write to Main Page after sync, and mapped balances are frozen on month close.</p></div>
@@ -576,6 +695,7 @@ function go(){
  if(!document.getElementById('budgyBubble'))document.body.insertAdjacentHTML('beforeend',`<button id="budgyBubble" aria-label="Ask Budgy" title="Ask Budgy" onclick="openBudgy()">✦</button><div id="budgyPanel" hidden><div class="budgy-head"><b>✦ Ask Budgy</b><button class="smallbtn" onclick="closeBudgy()" aria-label="Close">✕</button></div><div id="budgyMessages" aria-live="polite"><div class="budgy-message assistant">Ask Budgy about your budget, accounts, or spending. I'll suggest actions, but won't change your data.</div></div><form class="budgy-foot" onsubmit="event.preventDefault();sendBudgy()"><input id="budgyInput" autocomplete="off" aria-label="Question for Budgy" placeholder="Ask Budgy…"><button id="budgySend" class="p">Send</button></form></div>`);
 }
 boot();setInterval(()=>{if(D&&st.lastCalendarMonth&&st.lastCalendarMonth!==currentMonth())go()},60000);if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+
 </script>
 </body>
 </html>
