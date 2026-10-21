@@ -1,5 +1,5 @@
 // The Budg v4: update cached app resources without caching bank API requests.
-const CACHE = 'budg-v5';
+const CACHE = 'budg-v6';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(async cache => {
