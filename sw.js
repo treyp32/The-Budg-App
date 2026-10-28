@@ -1,5 +1,5 @@
-// The Budg V11 — network-first for live financial data; safe offline shell fallback.
-const CACHE='the-budg-v11-20261028';
+// The Budg V12 — network-first for live financial data; safe offline shell fallback.
+const CACHE='the-budg-v12-20261028';
 const SHELL=['./','./index.html','./manifest.webmanifest','./icon-192.png'];
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE);
